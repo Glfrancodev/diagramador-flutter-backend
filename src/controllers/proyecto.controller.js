@@ -115,7 +115,6 @@ class ProyectoController {
   }
 
   /* ----------------- EXPORTAR FLUTTER DINÁMICO ----------------- */
-/* ----------------- EXPORTAR FLUTTER DINÁMICO ----------------- */
 async exportarProyectoFlutter(req, res) {
   try {
     /* ---------- Paths y preparación de carpetas ---------- */
@@ -269,21 +268,22 @@ class _CheckboxWidgetState extends State<_CheckboxWidget> {
 
           /* ---------- LINK ---------- */
           case 'Link':
-            return posWrap(`GestureDetector(
-              onTap: () async {
-                final uri = Uri.parse('${props.url}');
-                if (await canLaunchUrl(uri)) await launchUrl(uri);
-              },
-              child: Text('${props.texto}',
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  decoration: TextDecoration.underline,
-                  fontSize: ${props.fontSize},
-                  color: Color(0xFF${(props.color || '#2563eb').slice(1)})
-                )
-              ),
-            )`);
-
+          return posWrap(`GestureDetector(
+            onTap: () async {
+              final uri = Uri.parse('${props.url}');
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+            child: Text('${props.texto}',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                decoration: TextDecoration.underline,
+                fontSize: ${props.fontSize},
+                color: Color(0xFF${(props.color || '#2563eb').slice(1)})
+              )
+            ),
+          )`);
           /* ---------- TABLA ---------- */
           case 'Tabla': {
             const headerRow = props.headers.map(
