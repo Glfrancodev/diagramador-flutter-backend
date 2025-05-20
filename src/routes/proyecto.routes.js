@@ -10,7 +10,6 @@ router.post('/', verificarToken, proyectoController.crear);
 router.get('/', verificarToken, proyectoController.listar);
 router.get('/permisos', verificarToken, proyectoController.listarPermitidos);
 router.get('/invitados', verificarToken, proyectoController.listarInvitados);
-router.post('/importar-boceto', upload.single('imagen'), proyectoController.importarBoceto);
 router.get('/:id/exportar-flutter', verificarToken, proyectoController.exportarProyectoFlutter); // ✅ Export dinámico
 
 router.get('/mis-proyectos', verificarToken, proyectoController.listarPorUsuario);

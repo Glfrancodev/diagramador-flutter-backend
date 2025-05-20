@@ -115,14 +115,16 @@ class ProyectoController {
   }
 
   /* ----------------- EXPORTAR FLUTTER DINÁMICO ----------------- */
+/* ----------------- EXPORTAR FLUTTER DINÁMICO ----------------- */
 async exportarProyectoFlutter(req, res) {
   try {
+    /* ---------- Paths y preparación de carpetas ---------- */
     const idProyecto = req.params.id;
     if (!idProyecto) return res.status(400).json({ error: 'Falta :id' });
 
     const plantillaDir = path.join(__dirname, '..', 'exportables', 'flutter-template');
-    const tempDir = path.join(__dirname, '..', 'temp', idProyecto);
-    const zipPath = path.join(__dirname, '..', 'temp', `${idProyecto}.zip`);
+    const tempDir     = path.join(__dirname, '..', 'temp', idProyecto);
+    const zipPath     = path.join(__dirname, '..', 'temp', `${idProyecto}.zip`);
 
     try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
     try { unlinkSync(zipPath); } catch {}
@@ -135,137 +137,185 @@ async exportarProyectoFlutter(req, res) {
       },
     });
 
+    /* ---------- Carga de datos ---------- */
     const proyectoDB = await proyectoService.obtenerPorId(idProyecto);
     if (!proyectoDB) return res.status(404).json({ error: 'Proyecto no encontrado' });
 
-    const contenido = JSON.parse(proyectoDB.contenido || '{}');
-    const pestañas = contenido.pestañas || [];
+    const contenido   = JSON.parse(proyectoDB.contenido || '{}');
+    const pestañas    = contenido.pestañas   || [];
     const dispositivo = contenido.dispositivo || 'tablet';
     if (!pestañas.length) return res.status(400).json({ error: 'El proyecto no posee pestañas' });
 
-    const libDir = path.join(tempDir, 'lib');
-    const screensDir = path.join(libDir, 'screens');
+    const libDir     = path.join(tempDir, 'lib');
+    const screensDir = path.join(libDir,  'screens');
     await fs.mkdir(screensDir, { recursive: true });
 
+    /* ---------- Aux ---------- */
     const normalizarNombre = (nombre) => {
       const limpio = nombre.trim().replace(/\s+/g, ' ');
-      const camel = limpio.replace(/(^\w|\s\w)/g, (m) => m.toUpperCase()).replace(/\s/g, '');
+      const camel  = limpio.replace(/(^\w|\s\w)/g, (m) => m.toUpperCase()).replace(/\s/g, '');
       return {
         clase: `Pantalla${camel}`,
-        file: `pantalla_${limpio.toLowerCase().replace(/\s+/g, '')}.dart`,
-        ruta: `/${camel}`,
+        file : `pantalla_${limpio.toLowerCase().replace(/\s+/g, '')}.dart`,
+        ruta : `/${camel}`,
       };
     };
 
-    const generarWidget = (el) => {
-      const { tipo, x, y, width, height, props } = el;
-      const posWrap = (childCode) =>
-        `Positioned(
+    /* =======================================================
+       ==========   GENERACIÓN DE CADA PANTALLA   ============
+       ======================================================= */
+    for (const pest of pestañas) {
+      /* --- set para widgets auxiliares de ESTA pantalla --- */
+      const auxWidgets = new Set();
+
+      /* --- función que crea cada widget individual --- */
+      const generarWidget = (el) => {
+        const { tipo, x, y, width, height, props } = el;
+        const posWrap = (child) => `Positioned(
           left: ${x.toFixed(2)},
-          top: ${y.toFixed(2)},
-          width: ${width.toFixed(2)},
+          top : ${y.toFixed(2)},
+          width : ${width.toFixed(2)},
           height: ${height.toFixed(2)},
-          child: ${childCode}
+          child : ${child}
         ),`;
 
-      switch (tipo) {
-        case 'Boton':
-          return posWrap(`ElevatedButton(
-            onPressed: () {},
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFF${(props.color || '#007bff').slice(1)}),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(${props.borderRadius ?? 4})
-              )
-            ),
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
+        switch (tipo) {
+          /* ---------- BOTÓN ---------- */
+          case 'Boton':
+            return posWrap(`ElevatedButton(
+              onPressed: () {},
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Color(0xFF${(props.color || '#007bff').slice(1)}),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(${props.borderRadius ?? 4})
+                )
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text('${props.texto}',
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: ${props.fontSize},
+                    color: Color(0xFF${(props.textColor || '#ffffff').slice(1)})
+                  )
+                ),
+              ),
+            )`);
+
+          /* ---------- SELECTOR ---------- */
+          case 'Selector': {
+            const opciones = JSON.stringify(props.options);
+            const id       = `dropdown_${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+            /* widget auxiliar se agrega a set (evita duplicados) */
+            auxWidgets.add(`
+class _DropdownWidget_${id} extends StatefulWidget {
+  @override
+  State<_DropdownWidget_${id}> createState() => _DropdownWidgetState_${id}();
+}
+
+class _DropdownWidgetState_${id} extends State<_DropdownWidget_${id}> {
+  String? val = '${props.options[0]}';
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButton<String>(
+      isExpanded: true,
+      value: val,
+      items: ${opciones}.map<DropdownMenuItem<String>>(
+        (o) => DropdownMenuItem(value: o, child: Text(o))
+      ).toList(),
+      onChanged: (v) => setState(() => val = v),
+    );
+  }
+}
+            `);
+            return posWrap(`_DropdownWidget_${id}()`);
+          }
+
+          /* ---------- CHECKBOX ---------- */
+          case 'Checkbox':
+            /* solo agregamos UNA VEZ la clase checkbox */
+            if (![...auxWidgets].some((c) => c.includes('class _CheckboxWidget'))) {
+              auxWidgets.add(`
+class _CheckboxWidget extends StatefulWidget {
+  final String texto;
+  final double fontSize;
+  const _CheckboxWidget({required this.texto, required this.fontSize});
+
+  @override
+  State<_CheckboxWidget> createState() => _CheckboxWidgetState();
+}
+class _CheckboxWidgetState extends State<_CheckboxWidget> {
+  bool value = false;
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Checkbox(value: value, onChanged: (v) => setState(() => value = v!)),
+      Expanded(
+        child: Text(widget.texto,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: widget.fontSize),
+        ),
+      )
+    ],
+  );
+}
+              `);
+            }
+            return posWrap(`_CheckboxWidget(
+              texto: '${props.texto}',
+              fontSize: ${props.fontSize}
+            )`);
+
+          /* ---------- LINK ---------- */
+          case 'Link':
+            return posWrap(`GestureDetector(
+              onTap: () async {
+                final uri = Uri.parse('${props.url}');
+                if (await canLaunchUrl(uri)) await launchUrl(uri);
+              },
               child: Text('${props.texto}',
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
+                  decoration: TextDecoration.underline,
                   fontSize: ${props.fontSize},
-                  color: Color(0xFF${(props.textColor || '#ffffff').slice(1)})
+                  color: Color(0xFF${(props.color || '#2563eb').slice(1)})
                 )
               ),
-            ),
-          )`);
+            )`);
 
-        case 'Selector':
-          return posWrap(`StatefulBuilder(
-            builder: (ctx, setState) {
-              String? val = '${props.options[0]}';
-              return DropdownButton<String>(
-                isExpanded: true,
-                value: val,
-                items: ${JSON.stringify(props.options)}.map(
-                  (o) => DropdownMenuItem(value: o, child: Text(o))
-                ).toList(),
-                onChanged: (v) => setState(() => val = v),
-              );
-            }
-          )`);
+          /* ---------- TABLA ---------- */
+          case 'Tabla': {
+            const headerRow = props.headers.map(
+              (h, i) => `DataColumn(label: SizedBox(width: ${props.colWidths[i]}, child: Text('${h}')))`
+            ).join(',');
+            const dataRows = props.data.map(
+              (fila) => `DataRow(cells: [${fila.map((c, i) =>
+                `DataCell(SizedBox(width: ${props.colWidths[i]}, child: Text('${c}')))`
+              ).join(',')}])`
+            ).join(',');
+            return posWrap(`SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                dataRowHeight: ${props.fontSize + 20},
+                headingRowHeight: ${props.fontSize + 24},
+                columns: [${headerRow}],
+                rows: [${dataRows}],
+              ),
+            )`);
+          }
 
-        case 'Checkbox':
-          return posWrap(`StatefulBuilder(
-            builder: (ctx, setState) {
-              bool v = false;
-              return Row(
-                children: [
-                  Checkbox(value: v, onChanged: (nv) => setState(() => v = nv!)),
-                  Expanded(child: Text('${props.texto}',
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: ${props.fontSize})
-                  ))
-                ],
-              );
-            }
-          )`);
+          default:
+            return posWrap('SizedBox.shrink()');
+        }
+      };
 
-        case 'Link':
-          return posWrap(`GestureDetector(
-            onTap: () async {
-              final uri = Uri.parse('${props.url}');
-              if (await canLaunchUrl(uri)) await launchUrl(uri);
-            },
-            child: Text('${props.texto}',
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                decoration: TextDecoration.underline,
-                fontSize: ${props.fontSize},
-                color: Color(0xFF${(props.color || '#2563eb').slice(1)})
-              )
-            ),
-          )`);
-
-        case 'Tabla':
-          const headerRow = props.headers.map(
-            (h, i) => `DataColumn(label: SizedBox(width: ${props.colWidths[i]}, child: Text('${h}')))`
-          ).join(',');
-          const dataRows = props.data.map(
-            (fila) => `DataRow(cells: [${fila.map((c, i) =>
-              `DataCell(SizedBox(width: ${props.colWidths[i]}, child: Text('${c}')))`
-            ).join(',')}])`
-          ).join(',');
-          return posWrap(`SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              dataRowHeight: ${props.fontSize + 20},
-              headingRowHeight: ${props.fontSize + 24},
-              columns: [${headerRow}],
-              rows: [${dataRows}],
-            ),
-          )`);
-
-        default:
-          return posWrap('SizedBox.shrink()');
-      }
-    };
-
-    for (const pest of pestañas) {
+      /* ---------- Variables de pantalla ---------- */
       const { clase, file } = normalizarNombre(pest.name);
       const canvasSize =
-        dispositivo === 'tablet' ? 'Size(800,1280)' :
-        dispositivo === 'mobile-small' ? 'Size(360,640)' : 'Size(390,844)';
+        dispositivo === 'tablet'       ? 'Size(800,1280)' :
+        dispositivo === 'mobile-small' ? 'Size(360,640)' :
+                                         'Size(390,844)';
 
       const widgets = pest.elementos
         .filter((e) => e.tipo !== 'Sidebar')
@@ -282,21 +332,24 @@ async exportarProyectoFlutter(req, res) {
                 ),
                 child: ListTile(
                   dense: true,
-                  title: Text('${it.texto}',
-                    style: const TextStyle(color: Colors.white)),
+                  title: Text('${it.texto}', style: const TextStyle(color: Colors.white)),
                   onTap: () => Navigator.pushReplacementNamed(
                     context, '/${it.nombrePestana.replace(/\s+/g, '')}'),
                 ),
               ),`).join('') || '';
 
-      const sidebarWidth = sidebar?.width?.toFixed(2) || '200';
-      const sidebarHeight = sidebar?.height?.toFixed(2) || canvasSize.split(',')[1];
-      const visibleDefault = sidebar?.props?.visible !== false;
-      const sidebarWidthNum = parseFloat(sidebar?.width) || 200;
+      const sidebarWidth     = sidebar?.width?.toFixed(2) || '200';
+      const sidebarHeight    = sidebar?.height?.toFixed(2) || canvasSize.split(',')[1];
+      const visibleDefault   = sidebar?.props?.visible !== false;
+      const sidebarWidthNum  = parseFloat(sidebar?.width) || 200;
 
+      /* ---------- Código final .dart de la pantalla ---------- */
       const pantallaCode = `
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+/* ==== Widgets auxiliares generados ==== */
+${[...auxWidgets].join('\n\n')}
 
 class ${clase} extends StatefulWidget {
   @override
@@ -318,6 +371,7 @@ class _${clase}State extends State<${clase}> {
             children: [
               ${widgets}
               ${sidebar ? `
+              /* ---------- Sidebar ---------- */
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 300),
                 left: visible ? 0 : -${sidebarWidth},
@@ -335,12 +389,13 @@ class _${clase}State extends State<${clase}> {
                         Text('${sidebar.props.titulo}',
                             style: const TextStyle(color: Colors.white, fontSize: 18)),
                         const SizedBox(height: 12),
-                        Expanded(child: ListView(children: [${items}])),
+                        Expanded(child: ListView(children: [${items}]))
                       ],
                     ),
                   ),
                 ),
               ),
+              /* ---------- Botón toggle ---------- */
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 300),
                 left: visible ? ${sidebarWidthNum - 40} : 0,
@@ -365,16 +420,20 @@ class _${clase}State extends State<${clase}> {
     );
   }
 }
-`;
-
+      `;
       await fs.writeFile(path.join(screensDir, file), pantallaCode);
-    }
+    } /* fin for de pestañas */
 
-    const imports = pestañas.map((p) => `import 'screens/${normalizarNombre(p.name).file}';`).join('\n');
-    const rutas = pestañas.map((p) => {
-      const { ruta, clase } = normalizarNombre(p.name);
-      return `'${ruta}': (context) => ${clase}(),`;
-    }).join('\n        ');
+    /* ---------- main.dart ---------- */
+    const imports = pestañas
+      .map((p) => `import 'screens/${normalizarNombre(p.name).file}';`)
+      .join('\n');
+    const rutas = pestañas
+      .map((p) => {
+        const { ruta, clase } = normalizarNombre(p.name);
+        return `'${ruta}': (context) => ${clase}(),`;
+      })
+      .join('\n        ');
     const homeClase = normalizarNombre(pestañas[0].name).clase;
 
     const mainCode = `
@@ -402,15 +461,19 @@ class MyApp extends StatelessWidget {
 `;
     await fs.writeFile(path.join(libDir, 'main.dart'), mainCode);
 
-    const output = createWriteStream(zipPath);
+    /* ---------- ZIP y descarga ---------- */
+    const output  = createWriteStream(zipPath);
     const archive = archiver('zip', { zlib: { level: 9 } });
+
     archive.on('error', (err) => {
       console.error('[EXPORTAR] ZIP:', err);
       return res.status(500).json({ error: 'Error al crear ZIP' });
     });
+
     archive.pipe(output);
     archive.directory(tempDir, false);
     await archive.finalize();
+
     await new Promise((ok, err) => {
       output.on('close', ok);
       output.on('error', err);
@@ -421,7 +484,6 @@ class MyApp extends StatelessWidget {
       try { rmSync(tempDir, { recursive: true, force: true }); } catch {}
       try { unlinkSync(zipPath); } catch {}
     });
-
   } catch (error) {
     console.error('[EXPORTAR] Error general:', error);
     res.status(500).json({ error: 'No se pudo exportar el proyecto Flutter.' });
