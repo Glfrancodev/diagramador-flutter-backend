@@ -286,24 +286,78 @@ class _CheckboxWidgetState extends State<_CheckboxWidget> {
           )`);
           /* ---------- TABLA ---------- */
           case 'Tabla': {
-            const headerRow = props.headers.map(
-              (h, i) => `DataColumn(label: SizedBox(width: ${props.colWidths[i]}, child: Text('${h}')))`
-            ).join(',');
-            const dataRows = props.data.map(
-              (fila) => `DataRow(cells: [${fila.map((c, i) =>
-                `DataCell(SizedBox(width: ${props.colWidths[i]}, child: Text('${c}')))`
-              ).join(',')}])`
-            ).join(',');
-            return posWrap(`SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                dataRowHeight: ${props.fontSize + 20},
-                headingRowHeight: ${props.fontSize + 24},
-                columns: [${headerRow}],
-                rows: [${dataRows}],
-              ),
-            )`);
+            const encabezado = props.headers.map(
+              (h, i) => `
+                TableCell(
+                  child: Container(
+                    width: ${props.colWidths[i]},
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Color(0xFFe5e7eb),
+                      border: Border.all(color: Colors.grey),
+                    ),
+                    child: Text(
+                      '${h}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: ${props.fontSize}
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  )
+                )
+            `).join(',');
+
+            const filas = props.data.map(
+              (fila) => `
+                TableRow(children: [
+                  ${fila.map(
+                    (c, i) => `
+                      TableCell(
+                        child: Container(
+                          width: ${props.colWidths[i]},
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey),
+                          ),
+                          child: Text(
+                            '${c}',
+                            style: TextStyle(fontSize: ${props.fontSize}),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        )
+                      )
+                  `).join(',')}
+                ])
+            `).join(',');
+
+            return posWrap(`
+              SizedBox(
+                width: ${width.toFixed(2)},
+                height: ${height.toFixed(2)},
+                child: Scrollbar(
+                  thumbVisibility: true,
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.vertical,
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Table(
+                        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
+                        columnWidths: {
+                          ${props.colWidths.map((w, i) => `${i}: FixedColumnWidth(${w})`).join(',')}
+                        },
+                        children: [
+                          TableRow(children: [${encabezado}]),
+                          ${filas}
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            `);
           }
+
 
           default:
             return posWrap('SizedBox.shrink()');
