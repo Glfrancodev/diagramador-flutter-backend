@@ -17,4 +17,7 @@ router.get('/:id', verificarToken, proyectoController.obtener);
 router.put('/:id', verificarToken, proyectoController.actualizar);
 router.delete('/:id', verificarToken, proyectoController.eliminar);
 
+// ✅ NUEVA RUTA: Importar desde imagen de boceto
+router.post('/importar-boceto', verificarToken, upload.single('imagen'), proyectoController.importarBoceto);
+
 module.exports = router;

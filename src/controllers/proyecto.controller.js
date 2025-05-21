@@ -7,6 +7,8 @@ const archiver = require('archiver');
 const path = require('path');
 const { createWriteStream, rmSync, unlinkSync } = require('fs');
 const proyectoService = require('../services/proyecto.service');
+const crypto = require('crypto');
+
 
 class ProyectoController {
   async crear(req, res) {
@@ -189,82 +191,185 @@ async exportarProyectoFlutter(req, res) {
                   borderRadius: BorderRadius.circular(${props.borderRadius ?? 4})
                 )
               ),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Text('${props.texto}',
+              child: Align(
+                alignment: Alignment.center,
+                child: Text(
+                  '${props.texto}',
                   overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                   style: TextStyle(
                     fontSize: ${props.fontSize},
                     color: Color(0xFF${(props.textColor || '#ffffff').slice(1)})
                   )
                 ),
-              ),
+              )
             )`);
+          /* ---------- LABEL ---------- */
+          case 'Label':
+            return posWrap(`Text(
+              '${props.texto}',
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: ${props.fontSize},
+                fontWeight: ${props.bold ? 'FontWeight.bold' : 'FontWeight.normal'},
+                color: Color(0xFF${(props.color || '#000000').slice(1)})
+              )
+            )`);
+          /* ---------- INPUTBOX ---------- */
+          case 'InputBox':
+            return posWrap(`TextField(
+              decoration: InputDecoration(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                border: OutlineInputBorder(),
+                hintText: '${props.placeholder ?? ''}',
+              ),
+              style: TextStyle(fontSize: ${props.fontSize}),
+            )`);
+          /* ---------- INPUTFECHA ---------- */
+          case 'InputFecha': {
+            const id = `inputfecha_${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+            auxWidgets.add(`
+          class _InputFechaWidget_${id} extends StatefulWidget {
+            const _InputFechaWidget_${id}({super.key});
+            @override
+            State<_InputFechaWidget_${id}> createState() => _InputFechaWidgetState_${id}();
+          }
+          class _InputFechaWidgetState_${id} extends State<_InputFechaWidget_${id}> {
+            DateTime? selectedDate;
+            final TextEditingController controller = TextEditingController();
 
+            Future<void> _selectDate(BuildContext context) async {
+              final DateTime? picked = await showDatePicker(
+                context: context,
+                initialDate: selectedDate ?? DateTime.now(),
+                firstDate: DateTime(1900),
+                lastDate: DateTime(2100),
+              );
+              if (picked != null && picked != selectedDate) {
+                setState(() {
+                  selectedDate = picked;
+                  controller.text = "\${picked.toLocal()}".split(' ')[0];
+                });
+              }
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              return TextField(
+                controller: controller,
+                readOnly: true,
+                onTap: () => _selectDate(context),
+                decoration: const InputDecoration(
+                  hintText: 'dd/mm/aaaa',
+                  suffixIcon: Icon(Icons.calendar_today_outlined, size: 20),
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                ),
+
+                style: TextStyle(fontSize: ${props.fontSize}),
+              );
+            }
+          }
+            `);
+            return posWrap(`_InputFechaWidget_${id}()`);
+          }
           /* ---------- SELECTOR ---------- */
           case 'Selector': {
             const opciones = JSON.stringify(props.options);
-            const id       = `dropdown_${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
-            /* widget auxiliar se agrega a set (evita duplicados) */
+            const id = `dropdown_${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
             auxWidgets.add(`
-class _DropdownWidget_${id} extends StatefulWidget {
-  @override
-  State<_DropdownWidget_${id}> createState() => _DropdownWidgetState_${id}();
-}
+      class _DropdownWidget_${id} extends StatefulWidget {
+        @override
+        State<_DropdownWidget_${id}> createState() => _DropdownWidgetState_${id}();
+      }
+      class _DropdownWidgetState_${id} extends State<_DropdownWidget_${id}> {
+        String? val = '${props.options[0]}';
 
-class _DropdownWidgetState_${id} extends State<_DropdownWidget_${id}> {
-  String? val = '${props.options[0]}';
-
-  @override
-  Widget build(BuildContext context) {
-    return DropdownButton<String>(
-      isExpanded: true,
-      value: val,
-      items: ${opciones}.map<DropdownMenuItem<String>>(
-        (o) => DropdownMenuItem(value: o, child: Text(o))
-      ).toList(),
-      onChanged: (v) => setState(() => val = v),
-    );
-  }
-}
+        @override
+        Widget build(BuildContext context) {
+          return Container(
+            alignment: Alignment.center,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: DropdownButton<String>(
+              isExpanded: true,
+              value: val,
+              underline: const SizedBox.shrink(),
+              style: TextStyle(
+                fontSize: ${props.fontSize},
+                color: Colors.black,
+              ),
+              dropdownColor: Colors.white,
+              items: ${opciones}.map<DropdownMenuItem<String>>(
+                (o) => DropdownMenuItem(
+                  value: o,
+                  child: Center(
+                    child: Text(
+                      o,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  )
+                )
+              ).toList(),
+              onChanged: (v) => setState(() => val = v),
+            ),
+          );
+        }
+      }
             `);
             return posWrap(`_DropdownWidget_${id}()`);
           }
 
           /* ---------- CHECKBOX ---------- */
           case 'Checkbox':
-            /* solo agregamos UNA VEZ la clase checkbox */
             if (![...auxWidgets].some((c) => c.includes('class _CheckboxWidget'))) {
               auxWidgets.add(`
-class _CheckboxWidget extends StatefulWidget {
-  final String texto;
-  final double fontSize;
-  const _CheckboxWidget({required this.texto, required this.fontSize});
-
-  @override
-  State<_CheckboxWidget> createState() => _CheckboxWidgetState();
-}
-class _CheckboxWidgetState extends State<_CheckboxWidget> {
-  bool value = false;
-  @override
-  Widget build(BuildContext context) => Row(
-    children: [
-      Checkbox(value: value, onChanged: (v) => setState(() => value = v!)),
-      Expanded(
-        child: Text(widget.texto,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(fontSize: widget.fontSize),
-        ),
-      )
-    ],
-  );
-}
+      class _CheckboxWidget extends StatefulWidget {
+        final String texto;
+        final double fontSize;
+        const _CheckboxWidget({required this.texto, required this.fontSize});
+        @override
+        State<_CheckboxWidget> createState() => _CheckboxWidgetState();
+      }
+      class _CheckboxWidgetState extends State<_CheckboxWidget> {
+        bool value = false;
+        @override
+        Widget build(BuildContext context) {
+          return Container(
+            alignment: Alignment.centerLeft,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Checkbox(
+                  value: value,
+                  onChanged: (v) => setState(() => value = v!),
+                ),
+                Expanded(
+                  child: Container(
+                    alignment: Alignment.centerLeft,
+                    constraints: const BoxConstraints(minWidth: 0),
+                    child: Text(
+                      widget.texto,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(fontSize: widget.fontSize),
+                    ),
+                  ),
+                )
+              ],
+            ),
+          );
+        }
+      }
               `);
             }
             return posWrap(`_CheckboxWidget(
               texto: '${props.texto}',
               fontSize: ${props.fontSize}
             )`);
+
 
           /* ---------- LINK ---------- */
           case 'Link':
@@ -367,7 +472,7 @@ class _CheckboxWidgetState extends State<_CheckboxWidget> {
       /* ---------- Variables de pantalla ---------- */
       const { clase, file } = normalizarNombre(pest.name);
       const canvasSize =
-        dispositivo === 'tablet'       ? 'Size(800,1280)' :
+        dispositivo === 'tablet'       ? 'Size(800,1335)' :
         dispositivo === 'mobile-small' ? 'Size(360,640)' :
                                          'Size(390,844)';
 
@@ -461,7 +566,7 @@ class _${clase}State extends State<${clase}> {
                     height: 32,
                     decoration: BoxDecoration(
                       color: const Color(0xFF2563eb),
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: const Icon(Icons.menu, color: Colors.white, size: 20),
                   ),
@@ -492,10 +597,16 @@ class _${clase}State extends State<${clase}> {
 
     const mainCode = `
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 ${imports}
 
-void main() => runApp(const MyApp());
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
+  runApp(const MyApp());
+}
+
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -543,6 +654,272 @@ class MyApp extends StatelessWidget {
     res.status(500).json({ error: 'No se pudo exportar el proyecto Flutter.' });
   }
 }
+
+async importarBoceto(req, res) {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No se recibió ninguna imagen.' });
+
+    const rutaImagen = req.file.path;
+    const extension = path.extname(req.file.originalname).toLowerCase();
+    if (!['.png', '.jpg', '.jpeg'].includes(extension)) {
+      return res.status(400).json({ error: 'Formato no válido. Solo PNG o JPG.' });
+    }
+
+    const imagenBuffer = fsSync.readFileSync(rutaImagen);
+    const imagenBase64 = imagenBuffer.toString('base64');
+    const base64URL = `data:image/${extension.replace('.', '')};base64,${imagenBase64}`;
+
+    const headers = {
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Type': 'application/json'
+    };
+
+    // 1. Analizar estructura de clases
+    const promptEstructura = `
+Analiza el boceto. Si representa un CRUD, responde exactamente así:
+
+{
+  "clases": [{ "nombre": "NombreClase", "atributos": [{ "nombre": "atributo" }] }],
+  "llavesPrimarias": { "NombreClase": "id" },
+  "relaciones": []
+}`;
+
+    const resEstr = await axios.post('https://api.openai.com/v1/chat/completions', {
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: promptEstructura },
+            { type: 'image_url', image_url: { url: base64URL } }
+          ]
+        }
+      ],
+      max_tokens: 1000
+    }, { headers });
+
+    const match = resEstr.data.choices?.[0]?.message?.content?.match(/\{[\s\S]*\}/);
+    if (!match) return res.status(400).json({ error: 'JSON de clases no encontrado' });
+
+    let estructura = JSON.parse(match[0]);
+    estructura.clases = estructura.clases.map(clase => {
+      const nombres = clase.atributos.map(a => a.nombre);
+      const pk = estructura.llavesPrimarias?.[clase.nombre];
+      if (pk && !nombres.includes(pk)) {
+        clase.atributos.unshift({ nombre: pk });
+      }
+      return clase;
+    });
+
+    const clase = estructura.clases[0];
+    const nombreClase = clase?.nombre || 'Pantalla1';
+    const pk = estructura.llavesPrimarias?.[nombreClase] || 'id';
+
+    // 2. Detectar si hay tabla, botón o sidebar
+    const promptExtras = `
+Analiza la imagen del formulario. ¿Contiene un botón como "Agregar"? ¿Contiene una tabla? ¿Hay un menú lateral o sidebar?
+
+Responde con este JSON:
+{
+  "boton": true/false,
+  "textoBoton": "Agregar",
+  "tabla": {
+    "headers": ["id", "Nombre", "Apellido"],
+    "filas": [
+      ["1", "Hola", "Chau"],
+      ["2", "Juan", "Perez"]
+    ]
+  } o null,
+  "sidebar": {
+    "titulo": "Menú",
+    "items": [
+      { "texto": "Usuario", "nombrePestana": "Usuario" }
+    ]
+  } o null
+}`;
+
+    const resExtras = await axios.post('https://api.openai.com/v1/chat/completions', {
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: promptExtras },
+            { type: 'image_url', image_url: { url: base64URL } }
+          ]
+        }
+      ],
+      max_tokens: 1000
+    }, { headers });
+
+    let extras = { boton: false, tabla: null, sidebar: null };
+    const matchExtras = resExtras.data.choices?.[0]?.message?.content?.match(/\{[\s\S]*\}/);
+    if (matchExtras) {
+      try {
+        extras = JSON.parse(matchExtras[0]);
+      } catch (err) {
+        console.warn('⚠️ JSON inválido en elementos extras:', matchExtras[0]);
+      }
+    }
+
+    // 3. Generar elementos
+    const elementos = [];
+    elementos.push({
+      id: crypto.randomUUID(),
+      tipo: 'Label',
+      x: 60,
+      y: 10,
+      width: 300,
+      height: 40,
+      props: {
+        texto: nombreClase,
+        fontSize: 24,
+        color: '#2563eb',
+        bold: true
+      }
+    });
+
+    let yActual = 60;
+    clase.atributos.forEach(attr => {
+      if (attr.nombre.toLowerCase() === pk.toLowerCase()) return;
+      const esFecha = attr.nombre.toLowerCase().includes('fecha');
+      const tipo = esFecha ? 'InputFecha' : 'InputBox';
+
+      elementos.push({
+        id: crypto.randomUUID(),
+        tipo: 'Label',
+        x: 50,
+        y: yActual,
+        width: 250,
+        height: 20,
+        props: {
+          texto: attr.nombre,
+          fontSize: 14,
+          color: '#000000',
+          bold: false
+        }
+      });
+
+      yActual += 20;
+
+      elementos.push({
+        id: crypto.randomUUID(),
+        tipo,
+        x: 50,
+        y: yActual,
+        width: 250,
+        height: 35,
+        props: {
+          placeholder: attr.nombre,
+          fontSize: 16
+        }
+      });
+
+      yActual += 50;
+    });
+
+    if (extras.boton) {
+      elementos.push({
+        id: crypto.randomUUID(),
+        tipo: 'Boton',
+        x: 50,
+        y: yActual,
+        width: 250,
+        height: 40,
+        props: {
+          texto: extras.textoBoton || 'Agregar',
+          color: '#007bff',
+          textColor: '#ffffff',
+          fontSize: 16,
+          borderRadius: 6
+        }
+      });
+      yActual += 60;
+    }
+
+    if (extras.tabla) {
+      elementos.push({
+        id: crypto.randomUUID(),
+        tipo: 'Label',
+        x: 50,
+        y: yActual,
+        width: 250,
+        height: 20,
+        props: {
+          texto: 'Lista usuarios',
+          fontSize: 14,
+          color: '#000000',
+          bold: false
+        }
+      });
+      yActual += 30;
+
+      elementos.push({
+        id: crypto.randomUUID(),
+        tipo: 'Tabla',
+        x: 50,
+        y: yActual,
+        width: 320,
+        height: 120,
+        props: {
+          headers: extras.tabla.headers,
+          data: extras.tabla.filas,
+          colWidths: extras.tabla.headers.map(() => 100),
+          fontSize: 14
+        }
+      });
+
+      yActual += 140;
+    }
+
+    if (extras.sidebar && extras.sidebar.items?.length > 0) {
+      elementos.push({
+        id: crypto.randomUUID(),
+        tipo: 'Sidebar',
+        x: 0,
+        y: 0,
+        width: 240,
+        height: 1335,
+        props: {
+          titulo: extras.sidebar.titulo || 'Menú',
+          items: extras.sidebar.items || [],
+          visible: true
+        }
+      });
+    }
+
+    // 4. Crear proyecto y guardar
+    const contenido = {
+      dispositivo: 'phoneStandard',
+      pestañas: [{
+        id: 'tab1',
+        name: nombreClase,
+        elementos
+      }],
+      clases: estructura.clases,
+      relaciones: estructura.relaciones || [],
+      clavesPrimarias: estructura.llavesPrimarias || {}
+    };
+
+    const proyecto = await proyectoService.crear({
+      nombre: nombreClase,
+      descripcion: 'Importado desde boceto',
+      idUsuario: req.usuario.idUsuario,
+      contenido: JSON.stringify(contenido),
+      creadoEn: new Date().toISOString()
+    });
+
+    res.status(201).json({
+      mensaje: '✅ Boceto analizado y proyecto creado correctamente',
+      proyecto
+    });
+  } catch (error) {
+    console.error('[importarBoceto] Error:', error?.response?.data || error.message);
+    res.status(500).json({ error: 'Error interno al analizar el boceto.' });
+  }
+}
+
+
 
 }
       
