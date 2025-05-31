@@ -172,13 +172,15 @@ async exportarProyectoFlutter(req, res) {
       /* --- función que crea cada widget individual --- */
       const generarWidget = (el) => {
         const { tipo, x, y, width, height, props } = el;
-        const posWrap = (child) => `Positioned(
-          left: ${x.toFixed(2)},
-          top : ${y.toFixed(2)},
-          width : ${width.toFixed(2)},
-          height: ${height.toFixed(2)},
-          child : ${child}
-        ),`;
+        const posWrap = (child) => `
+          Positioned(
+            left: constraints.maxWidth * ${x.toFixed(4)},
+            top: constraints.maxHeight * ${y.toFixed(4)},
+            width: constraints.maxWidth * ${width.toFixed(4)},
+            height: constraints.maxHeight * ${height.toFixed(4)},
+            child: ${child}
+          ),`;
+
 
         switch (tipo) {
           /* ---------- BOTÓN ---------- */
@@ -525,55 +527,63 @@ class _${clase}State extends State<${clase}> {
         child: SizedBox(
           width: ${canvasSize}.width,
           height: ${canvasSize}.height,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              ${widgets}
-              ${sidebar ? `
-              /* ---------- Sidebar ---------- */
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 300),
-                left: visible ? 0 : -${sidebarWidth},
-                top: 0,
-                width: ${sidebarWidth},
-                height: ${sidebarHeight},
-                child: Material(
-                  elevation: 8,
-                  color: const Color(0xFF1f2937),
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 16, left: 8, right: 8),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('${sidebar.props.titulo}',
-                            style: const TextStyle(color: Colors.white, fontSize: 18)),
-                        const SizedBox(height: 12),
-                        Expanded(child: ListView(children: [${items}]))
-                      ],
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  ${widgets}
+                  ${sidebar ? `
+                  /* ---------- Sidebar ---------- */
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 300),
+                    left: visible ? 0 : -constraints.maxWidth * ${sidebar.width.toFixed(4)},
+                    top: 0,
+                    width: constraints.maxWidth * ${sidebar.width.toFixed(4)},
+                    height: constraints.maxHeight * ${sidebar.height.toFixed(4)},
+                    child: Material(
+                      elevation: 8,
+                      color: const Color(0xFF1f2937),
+                      child: Padding(
+                        padding: const EdgeInsets.only(top: 16, left: 8, right: 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('${sidebar.props.titulo}',
+                                style: const TextStyle(color: Colors.white, fontSize: 18)),
+                            const SizedBox(height: 12),
+                            Expanded(child: ListView(children: [${items}]))
+                          ],
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              /* ---------- Botón toggle ---------- */
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 300),
-                left: visible ? ${sidebarWidthNum - 40} : 0,
-                top: 16,
-                child: GestureDetector(
-                  onTap: () => setState(() => visible = !visible),
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF2563eb),
-                      borderRadius: BorderRadius.circular(6),
+
+                  /* ---------- Botón toggle ---------- */
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 300),
+                    left: visible
+                      ? constraints.maxWidth * ${sidebar.width.toFixed(4)} - 40
+                      : 0,
+                    top: 16,
+                    child: GestureDetector(
+                      onTap: () => setState(() => visible = !visible),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2563eb),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Icon(Icons.menu, color: Colors.white, size: 20),
+                      ),
                     ),
-                    child: const Icon(Icons.menu, color: Colors.white, size: 20),
-                  ),
-                ),
-              ),` : ''}
-            ],
+                  ),` : ''}
+                ],
+              );
+            }
           ),
+
         ),
       ),
     );
@@ -655,271 +665,180 @@ class MyApp extends StatelessWidget {
   }
 }
 
+/**
+ * POST /api/proyectos/importar-boceto
+ * multipart/form-data:
+ *   – imagen            (file .png / .jpg)
+ *   – tipoDispositivo   (text) phoneSmall | phoneStandard | tablet
+ *
+ * ⇢ Crea SIEMPRE un proyecto visual (canvas) a partir del boceto,
+ *   sin importar si dibujaron un CRUD o un simple mock-up.
+ * ⇢ No genera clases, atributos ni claves primarias.
+ */
 async importarBoceto(req, res) {
   try {
-    if (!req.file) return res.status(400).json({ error: 'No se recibió ninguna imagen.' });
+    /* ---------- 0. Validaciones ---------- */
+    if (!req.file) {
+      return res.status(400).json({ error: 'No se recibió ninguna imagen.' });
+    }
 
-    const rutaImagen = req.file.path;
-    const extension = path.extname(req.file.originalname).toLowerCase();
-    if (!['.png', '.jpg', '.jpeg'].includes(extension)) {
+    const tipoDispositivo = req.body.tipoDispositivo || 'phoneStandard';
+    const rutaImagen      = req.file.path;
+    const ext             = path.extname(req.file.originalname).toLowerCase();
+    if (!['.png', '.jpg', '.jpeg'].includes(ext)) {
       return res.status(400).json({ error: 'Formato no válido. Solo PNG o JPG.' });
     }
 
-    const imagenBuffer = fsSync.readFileSync(rutaImagen);
-    const imagenBase64 = imagenBuffer.toString('base64');
-    const base64URL = `data:image/${extension.replace('.', '')};base64,${imagenBase64}`;
+    /* ---------- 1. Imagen → base64 ---------- */
+    const base64URL =
+      `data:image/${ext.replace('.', '')};base64,${fsSync.readFileSync(rutaImagen).toString('base64')}`;
 
-    const headers = {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      'Content-Type': 'application/json'
+    /* ---------- 2. Obtener TODAS las bounding-boxes ---------- */
+    const promptBoxes = `
+Devuélveme todos los componentes reconocibles del boceto
+(labels, inputs, botones, tablas, sidebars …) con sus bounding-boxes
+normalizadas (0-1) respecto al ancho/alto de la imagen.
+
+Formato exacto:
+{
+  "boxes": [
+    { "tipo":"Label",     "texto":"Título",  "bb":{"x":0.05,"y":0.05,"w":0.9,"h":0.08} },
+    { "tipo":"InputBox",  "texto":"Nombre",  "bb":{"x":0.25,"y":0.20,"w":0.65,"h":0.06} },
+    { "tipo":"Boton",     "texto":"Enviar",  "bb":{"x":0.2,"y":0.35,"w":0.6,"h":0.07} },
+    { "tipo":"Tabla",     "headers":["id","Nombre"], "filas":[["1","Juan"]], "bb":{...} },
+    { "tipo":"Sidebar",   "texto":"Menú", "items":[{"texto":"Home"}], "bb":{...} }
+  ]
+}`;
+    const resBB = await axios.post(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model: 'gpt-4o',
+        messages: [
+          { role: 'user',
+            content: [
+              { type: 'text', text: promptBoxes },
+              { type: 'image_url', image_url: { url: base64URL } }
+            ]
+          }
+        ],
+        max_tokens: 1500
+      },
+      { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
+    );
+
+    const matchBB = resBB.data.choices?.[0]?.message?.content?.match(/\{[\s\S]*\}/);
+    if (!matchBB) {
+      return res.status(400).json({ error: 'No se pudo interpretar el boceto.' });
+    }
+
+    const { boxes } = JSON.parse(matchBB[0]);
+
+    /* ---------- 3. Detectar pares Label + Input en línea ---------- */
+    const labels = boxes.filter(b => b.tipo === 'Label');
+    const inputs = boxes.filter(b => b.tipo.startsWith('Input'));
+    const inlinePairs = {};         // textoLower → {label,input}
+
+    inputs.forEach(inp => {
+      const cand = labels
+        .filter(l =>
+          Math.abs(l.bb.y - inp.bb.y) < l.bb.h * 0.3 &&
+          (l.bb.x + l.bb.w / 2) < (inp.bb.x + inp.bb.w / 2))
+        .sort((a, b) => Math.abs(a.bb.y - inp.bb.y) - Math.abs(b.bb.y - inp.bb.y))[0];
+      if (cand) inlinePairs[cand.texto?.toLowerCase()] = { label: cand, input: inp };
+    });
+
+    /* ---------- 4. Nombre de la pantalla ---------- */
+    const tituloLabel = labels.sort((a, b) => b.bb.h - a.bb.h)[0];
+    const nombrePantalla = tituloLabel?.texto?.trim() || 'Pantalla1';
+
+    /* ---------- 5. Conversión a elementos del canvas ---------- */
+    const DEVICE_W = { phoneSmall: 320, phoneStandard: 390, tablet: 768 }[tipoDispositivo] || 390;
+    const elementos = [];
+
+    const pushElement = (b, override = {}) => {
+      const x      = Math.round(b.bb.x * DEVICE_W);
+      const y      = Math.round(b.bb.y * DEVICE_W);
+      const width  = Math.round(b.bb.w * DEVICE_W);
+      const height = Math.round(b.bb.h * DEVICE_W);
+
+      switch (b.tipo) {
+        case 'InputBox':
+        case 'InputFecha':
+          elementos.push({
+            id: crypto.randomUUID(), tipo: b.tipo, x, y, width, height,
+            props: { placeholder: b.texto || '', fontSize: 16, ...override }
+          }); break;
+        case 'Boton':
+          elementos.push({
+            id: crypto.randomUUID(), tipo: 'Boton', x, y, width, height,
+            props: { texto: b.texto || 'Botón', color:'#2563eb', textColor:'#fff', fontSize:16, ...override }
+          }); break;
+        case 'Tabla':
+          elementos.push({
+            id: crypto.randomUUID(), tipo:'Tabla', x, y, width, height,
+            props:{ headers:b.headers||[], data:b.filas||[],
+              colWidths:(b.headers||[]).map(()=>Math.floor(width/(b.headers||[]).length)),
+              fontSize:14, ...override }
+          }); break;
+        case 'Sidebar':
+          elementos.push({
+            id: crypto.randomUUID(), tipo:'Sidebar', x, y, width, height,
+            props:{ titulo:b.texto||'Menú', items:b.items||[], visible:true, ...override }
+          }); break;
+            default: // Label
+              elementos.push({
+                id: crypto.randomUUID(), tipo: 'Label', x, y, width, height,
+                props: {
+                  texto: b.texto || '',
+                  fontSize: Math.max(10, Math.round(height * 0.8)), // estimación real basada en altura
+                  color: '#000',
+                  ...override
+                }
+              });
+
+      }
     };
 
-    // 1. Analizar estructura de clases
-    const promptEstructura = `
-Analiza el boceto. Si representa un CRUD, responde exactamente así:
-
-{
-  "clases": [{ "nombre": "NombreClase", "atributos": [{ "nombre": "atributo" }] }],
-  "llavesPrimarias": { "NombreClase": "id" },
-  "relaciones": []
-}`;
-
-    const resEstr = await axios.post('https://api.openai.com/v1/chat/completions', {
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: promptEstructura },
-            { type: 'image_url', image_url: { url: base64URL } }
-          ]
-        }
-      ],
-      max_tokens: 1000
-    }, { headers });
-
-    const match = resEstr.data.choices?.[0]?.message?.content?.match(/\{[\s\S]*\}/);
-    if (!match) return res.status(400).json({ error: 'JSON de clases no encontrado' });
-
-    let estructura = JSON.parse(match[0]);
-    estructura.clases = estructura.clases.map(clase => {
-      const nombres = clase.atributos.map(a => a.nombre);
-      const pk = estructura.llavesPrimarias?.[clase.nombre];
-      if (pk && !nombres.includes(pk)) {
-        clase.atributos.unshift({ nombre: pk });
-      }
-      return clase;
+    // Boxes que NO pertenecen a un par inline
+    boxes.forEach(b => {
+      if (inlinePairs[b.texto?.toLowerCase()]?.label === b) return;
+      if (inlinePairs[b.texto?.toLowerCase()]?.input === b) return;
+      pushElement(b);
     });
 
-    const clase = estructura.clases[0];
-    const nombreClase = clase?.nombre || 'Pantalla1';
-    const pk = estructura.llavesPrimarias?.[nombreClase] || 'id';
-
-    // 2. Detectar si hay tabla, botón o sidebar
-    const promptExtras = `
-Analiza la imagen del formulario. ¿Contiene un botón como "Agregar"? ¿Contiene una tabla? ¿Hay un menú lateral o sidebar?
-
-Responde con este JSON:
-{
-  "boton": true/false,
-  "textoBoton": "Agregar",
-  "tabla": {
-    "headers": ["id", "Nombre", "Apellido"],
-    "filas": [
-      ["1", "Hola", "Chau"],
-      ["2", "Juan", "Perez"]
-    ]
-  } o null,
-  "sidebar": {
-    "titulo": "Menú",
-    "items": [
-      { "texto": "Usuario", "nombrePestana": "Usuario" }
-    ]
-  } o null
-}`;
-
-    const resExtras = await axios.post('https://api.openai.com/v1/chat/completions', {
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: promptExtras },
-            { type: 'image_url', image_url: { url: base64URL } }
-          ]
-        }
-      ],
-      max_tokens: 1000
-    }, { headers });
-
-    let extras = { boton: false, tabla: null, sidebar: null };
-    const matchExtras = resExtras.data.choices?.[0]?.message?.content?.match(/\{[\s\S]*\}/);
-    if (matchExtras) {
-      try {
-        extras = JSON.parse(matchExtras[0]);
-      } catch (err) {
-        console.warn('⚠️ JSON inválido en elementos extras:', matchExtras[0]);
-      }
-    }
-
-    // 3. Generar elementos
-    const elementos = [];
-    elementos.push({
-      id: crypto.randomUUID(),
-      tipo: 'Label',
-      x: 60,
-      y: 10,
-      width: 300,
-      height: 40,
-      props: {
-        texto: nombreClase,
-        fontSize: 24,
-        color: '#2563eb',
-        bold: true
-      }
+    // Añadir pares inline (label + input)
+    Object.values(inlinePairs).forEach(({ label, input }) => {
+      pushElement(label, { valign:'middle' });
+      pushElement(input);
     });
 
-    let yActual = 60;
-    clase.atributos.forEach(attr => {
-      if (attr.nombre.toLowerCase() === pk.toLowerCase()) return;
-      const esFecha = attr.nombre.toLowerCase().includes('fecha');
-      const tipo = esFecha ? 'InputFecha' : 'InputBox';
-
-      elementos.push({
-        id: crypto.randomUUID(),
-        tipo: 'Label',
-        x: 50,
-        y: yActual,
-        width: 250,
-        height: 20,
-        props: {
-          texto: attr.nombre,
-          fontSize: 14,
-          color: '#000000',
-          bold: false
-        }
-      });
-
-      yActual += 20;
-
-      elementos.push({
-        id: crypto.randomUUID(),
-        tipo,
-        x: 50,
-        y: yActual,
-        width: 250,
-        height: 35,
-        props: {
-          placeholder: attr.nombre,
-          fontSize: 16
-        }
-      });
-
-      yActual += 50;
-    });
-
-    if (extras.boton) {
-      elementos.push({
-        id: crypto.randomUUID(),
-        tipo: 'Boton',
-        x: 50,
-        y: yActual,
-        width: 250,
-        height: 40,
-        props: {
-          texto: extras.textoBoton || 'Agregar',
-          color: '#007bff',
-          textColor: '#ffffff',
-          fontSize: 16,
-          borderRadius: 6
-        }
-      });
-      yActual += 60;
-    }
-
-    if (extras.tabla) {
-      elementos.push({
-        id: crypto.randomUUID(),
-        tipo: 'Label',
-        x: 50,
-        y: yActual,
-        width: 250,
-        height: 20,
-        props: {
-          texto: 'Lista usuarios',
-          fontSize: 14,
-          color: '#000000',
-          bold: false
-        }
-      });
-      yActual += 30;
-
-      elementos.push({
-        id: crypto.randomUUID(),
-        tipo: 'Tabla',
-        x: 50,
-        y: yActual,
-        width: 320,
-        height: 120,
-        props: {
-          headers: extras.tabla.headers,
-          data: extras.tabla.filas,
-          colWidths: extras.tabla.headers.map(() => 100),
-          fontSize: 14
-        }
-      });
-
-      yActual += 140;
-    }
-
-    if (extras.sidebar && extras.sidebar.items?.length > 0) {
-      elementos.push({
-        id: crypto.randomUUID(),
-        tipo: 'Sidebar',
-        x: 0,
-        y: 0,
-        width: 240,
-        height: 1335,
-        props: {
-          titulo: extras.sidebar.titulo || 'Menú',
-          items: extras.sidebar.items || [],
-          visible: true
-        }
-      });
-    }
-
-    // 4. Crear proyecto y guardar
+    /* ---------- 6. Guardar proyecto ---------- */
     const contenido = {
-      dispositivo: 'phoneStandard',
-      pestañas: [{
-        id: 'tab1',
-        name: nombreClase,
-        elementos
-      }],
-      clases: estructura.clases,
-      relaciones: estructura.relaciones || [],
-      clavesPrimarias: estructura.llavesPrimarias || {}
+      dispositivo: tipoDispositivo,
+      pestañas: [{ id:'tab1', name: nombrePantalla, elementos }],
+      clases: [],               // SIN CRUD
+      relaciones: [],
+      clavesPrimarias: {}
     };
 
     const proyecto = await proyectoService.crear({
-      nombre: nombreClase,
-      descripcion: 'Importado desde boceto',
+      nombre: nombrePantalla,
+      descripcion: 'Importado desde boceto de diseño',
       idUsuario: req.usuario.idUsuario,
       contenido: JSON.stringify(contenido),
       creadoEn: new Date().toISOString()
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       mensaje: '✅ Boceto analizado y proyecto creado correctamente',
       proyecto
     });
-  } catch (error) {
-    console.error('[importarBoceto] Error:', error?.response?.data || error.message);
-    res.status(500).json({ error: 'Error interno al analizar el boceto.' });
+
+  } catch (err) {
+    console.error('[importarBoceto] Error:', err?.response?.data || err.message);
+    return res.status(500).json({ error: 'Error interno al analizar el boceto.' });
   }
 }
-
-
 
 }
       

@@ -20,7 +20,7 @@ const Usuario = sequelize.define('Usuario', {
     type: DataTypes.STRING,
     allowNull: false
   },
-  fechaRegistro: {
+  fechaCreación: {
     type: DataTypes.DATE,
     defaultValue: DataTypes.NOW
   },
