@@ -8,7 +8,59 @@ const path = require('path');
 const { createWriteStream, rmSync, unlinkSync } = require('fs');
 const proyectoService = require('../services/proyecto.service');
 const crypto = require('crypto');
+const sizeOf = require('image-size').imageSize;
+const { v4: uuidv4 } = require('uuid'); // ← asegúrate de tener esto
+function estimateFontSize(boxHeightPx) {
+  if (boxHeightPx < 12) return 9;
+  if (boxHeightPx < 16) return 11;
+  if (boxHeightPx < 22) return 13;
+  if (boxHeightPx < 28) return 14;
+  if (boxHeightPx < 34) return 16;
+  if (boxHeightPx < 40) return 18;
+  if (boxHeightPx < 46) return 20;
+  if (boxHeightPx < 54) return 21;
+  if (boxHeightPx < 60) return 23;
+  return 23; // máximo estimado
+}
 
+const DETECTOR_SCHEMA = {
+  name: 'detect_ui',
+  description: 'Devuelve todos los componentes UI detectados en el boceto',
+  parameters: {
+    type: 'object',
+    properties: {
+      boxes: {
+        type: 'array',
+        items: {
+          type: 'object',
+          required: ['tipo', 'bb'],
+          properties: {
+            /* tipos válidos en tu editor */
+            tipo: { enum: [
+              'Label', 'InputBox', 'InputFecha', 'Boton',
+              'Selector', 'Checkbox', 'Tabla', 'Link', 'Sidebar'
+            ]},
+            texto   : { type: 'string' },
+            headers : { type: 'array',  items:{type:'string'} },
+            filas   : { type: 'array',  items:{type:'array', items:{type:'string'}} },
+            items   : { type: 'array',  items:{type:'object', properties:{texto:{type:'string'}}}},
+            options : { type: 'array',  items:{type:'string'} },
+            url     : { type: 'string' },
+            bb: {
+              type: 'object',
+              required: ['x','y','w','h'],
+              properties: {
+                x:{type:'number'}, y:{type:'number'},
+                w:{type:'number'}, h:{type:'number'}
+              }
+            }
+          }
+        }
+      }
+    },
+    required: ['boxes']
+  }
+};
 
 class ProyectoController {
   async crear(req, res) {
@@ -476,7 +528,7 @@ async exportarProyectoFlutter(req, res) {
       const canvasSize =
         dispositivo === 'tablet'       ? 'Size(800,1335)' :
         dispositivo === 'mobile-small' ? 'Size(360,640)' :
-                                         'Size(390,844)';
+                                         'Size(414,896)';
 
       const widgets = pest.elementos
         .filter((e) => e.tipo !== 'Sidebar')
@@ -665,181 +717,197 @@ class MyApp extends StatelessWidget {
   }
 }
 
-/**
- * POST /api/proyectos/importar-boceto
- * multipart/form-data:
- *   – imagen            (file .png / .jpg)
- *   – tipoDispositivo   (text) phoneSmall | phoneStandard | tablet
- *
- * ⇢ Crea SIEMPRE un proyecto visual (canvas) a partir del boceto,
- *   sin importar si dibujaron un CRUD o un simple mock-up.
- * ⇢ No genera clases, atributos ni claves primarias.
- */
+
 async importarBoceto(req, res) {
   try {
-    /* ---------- 0. Validaciones ---------- */
-    if (!req.file) {
+    /* ─── 0. Validaciones ─── */
+    if (!req.file)
       return res.status(400).json({ error: 'No se recibió ninguna imagen.' });
-    }
 
-    const tipoDispositivo = req.body.tipoDispositivo || 'phoneStandard';
-    const rutaImagen      = req.file.path;
-    const ext             = path.extname(req.file.originalname).toLowerCase();
-    if (!['.png', '.jpg', '.jpeg'].includes(ext)) {
+    const ext = path.extname(req.file.originalname).toLowerCase();
+    if (!['.png', '.jpg', '.jpeg'].includes(ext))
       return res.status(400).json({ error: 'Formato no válido. Solo PNG o JPG.' });
-    }
 
-    /* ---------- 1. Imagen → base64 ---------- */
+    /* ─── 1. Imagen → base64 ─── */
+    const rutaImg = req.file.path;
+    const buffer  = await fs.readFile(rutaImg);
+    const { width: W, height: H } = sizeOf(buffer);
     const base64URL =
-      `data:image/${ext.replace('.', '')};base64,${fsSync.readFileSync(rutaImagen).toString('base64')}`;
+      `data:image/${ext.replace('.', '')};base64,${buffer.toString('base64')}`;
 
-    /* ---------- 2. Obtener TODAS las bounding-boxes ---------- */
-    const promptBoxes = `
-Devuélveme todos los componentes reconocibles del boceto
-(labels, inputs, botones, tablas, sidebars …) con sus bounding-boxes
-normalizadas (0-1) respecto al ancho/alto de la imagen.
+    /* ─── 2. Prompt ─── */
+const prompt = `
+Eres un analista experto en mockups de interfaces, es decir, necesito que sepas describir de manera exacta y fiel el contenido de la imagen que te voy a mandar haciendo que tu respuesta sea completamente fiel al boceto de imagen.
 
-Formato exacto:
-{
-  "boxes": [
-    { "tipo":"Label",     "texto":"Título",  "bb":{"x":0.05,"y":0.05,"w":0.9,"h":0.08} },
-    { "tipo":"InputBox",  "texto":"Nombre",  "bb":{"x":0.25,"y":0.20,"w":0.65,"h":0.06} },
-    { "tipo":"Boton",     "texto":"Enviar",  "bb":{"x":0.2,"y":0.35,"w":0.6,"h":0.07} },
-    { "tipo":"Tabla",     "headers":["id","Nombre"], "filas":[["1","Juan"]], "bb":{...} },
-    { "tipo":"Sidebar",   "texto":"Menú", "items":[{"texto":"Home"}], "bb":{...} }
-  ]
-}`;
-    const resBB = await axios.post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: 'gpt-4o',
+INSTRUCCIONES GENERALES
+• Usa TODO el marco de la imagen como canvas (sin márgenes).
+• Devuelve CADA componente visible (Label, InputBox, InputFecha, Boton, Sidebar, etc.).
+• Las coordenadas bb.x, bb.y, bb.w, bb.h deben estar en **píxeles absolutos**
+  respecto al tamaño real de la imagen (${W}px × ${H}px).
+• Si un Selector está desplegado (con varias opciones visibles), incluye esas opciones en props.options[].
+• Si sólo una opción es visible incluye esa opción en props.options[].
+SIDEBARS
+• Si un Label cae completamente DENTRO del rectángulo del Sidebar:
+  - El Label más alto será props.titulo.
+  - El resto irán en props.items[].
+• No devuelvas esos Label como elementos sueltos fuera del Sidebar.
+SELECTOR DESPLEGADO
+• Si detectas una caja con una opción visible y debajo aparecen una o más líneas de texto alineadas verticalmente, dentro de rectángulos del mismo ancho:
+  - Interprétalo como un Selector desplegado.
+  - Usa la opción visible como props.texto
+  - Incluye TODAS las opciones visibles, incluyendo la seleccionada, en props.options[].
+  - Usa las opciones listadas debajo como props.options[]
+• No trates esas opciones como tabla ni como input.
+
+FORMATO DE SALIDA
+• Llama únicamente a la función detect_ui con el JSON correspondiente.
+• No añadas ningún texto adicional fuera del JSON.
+`;
+
+    /* ─── 3. Llamada a OpenAI (reintento) ─── */
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    let toolCall;
+    for (let i = 0; i < 2; i++) {
+      const completion = await openai.chat.completions.create({
+        model: 'o3',
+        tools: [{ type: 'function', function: DETECTOR_SCHEMA }],
         messages: [
-          { role: 'user',
-            content: [
-              { type: 'text', text: promptBoxes },
+          { role: 'system', content: 'Eres un analista experto en wireframes.' },
+          { role: 'user', content: [
+              { type: 'text', text: prompt },
               { type: 'image_url', image_url: { url: base64URL } }
-            ]
-          }
+          ] }
         ],
-        max_tokens: 1500
-      },
-      { headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` } }
-    );
-
-    const matchBB = resBB.data.choices?.[0]?.message?.content?.match(/\{[\s\S]*\}/);
-    if (!matchBB) {
+        max_completion_tokens: 2048
+      });
+      toolCall = completion.choices?.[0]?.message?.tool_calls?.[0];
+      if (toolCall) break;
+    }
+    if (!toolCall)
       return res.status(400).json({ error: 'No se pudo interpretar el boceto.' });
+
+    /* ─── 4. Parseo bruto ─── */
+    let { boxes } = JSON.parse(toolCall.function.arguments);
+    if (!boxes?.length)
+      return res.status(400).json({ error: 'No se detectaron componentes.' });
+
+    /* ─── 5. Post-proceso de Sidebar ─── */
+    for (const sb of boxes.filter(b => b.tipo === 'Sidebar')) {
+      const sx = sb.bb.x, sy = sb.bb.y,
+            sx2 = sx + sb.bb.w, sy2 = sy + sb.bb.h;
+
+      const internos = boxes.filter(b =>
+        b.tipo === 'Label' &&
+        b.bb.x >= sx && (b.bb.x + b.bb.w) <= sx2 &&
+        b.bb.y >= sy && (b.bb.y + b.bb.h) <= sy2
+      );
+
+      if (internos.length) {
+        internos.sort((a, b) => a.bb.y - b.bb.y);
+        const tituloLbl = internos.shift();
+        sb.titulo = tituloLbl.texto.trim();
+        sb.items  = internos.map(l => ({ texto: l.texto.trim() }));
+        // eliminar labels absorbidos
+        boxes = boxes.filter(b => !internos.includes(b) && b !== tituloLbl);
+      } else if (sb.texto) {
+        // Fallback: usar texto del propio objeto Sidebar
+        sb.titulo = sb.texto.trim();
+      }
     }
 
-    const { boxes } = JSON.parse(matchBB[0]);
+    /* ─── 6. Boxes → elementos canvas ─── */
+    const elementos = boxes.map(b => {
+      const x = +(b.bb.x / W).toFixed(6);
+      const y = +(b.bb.y / H).toFixed(6);
+      const width  = +(b.bb.w / W).toFixed(6);
+      const height = +(b.bb.h / H).toFixed(6);
 
-    /* ---------- 3. Detectar pares Label + Input en línea ---------- */
-    const labels = boxes.filter(b => b.tipo === 'Label');
-    const inputs = boxes.filter(b => b.tipo.startsWith('Input'));
-    const inlinePairs = {};         // textoLower → {label,input}
+      const base = {
+        id: uuidv4(),
+        tipo: b.tipo,
+        x, y, width, height,
+        props: { fontSize: estimateFontSize(b.bb.h) }
 
-    inputs.forEach(inp => {
-      const cand = labels
-        .filter(l =>
-          Math.abs(l.bb.y - inp.bb.y) < l.bb.h * 0.3 &&
-          (l.bb.x + l.bb.w / 2) < (inp.bb.x + inp.bb.w / 2))
-        .sort((a, b) => Math.abs(a.bb.y - inp.bb.y) - Math.abs(b.bb.y - inp.bb.y))[0];
-      if (cand) inlinePairs[cand.texto?.toLowerCase()] = { label: cand, input: inp };
-    });
-
-    /* ---------- 4. Nombre de la pantalla ---------- */
-    const tituloLabel = labels.sort((a, b) => b.bb.h - a.bb.h)[0];
-    const nombrePantalla = tituloLabel?.texto?.trim() || 'Pantalla1';
-
-    /* ---------- 5. Conversión a elementos del canvas ---------- */
-    const DEVICE_W = { phoneSmall: 320, phoneStandard: 390, tablet: 768 }[tipoDispositivo] || 390;
-    const elementos = [];
-
-    const pushElement = (b, override = {}) => {
-      const x      = Math.round(b.bb.x * DEVICE_W);
-      const y      = Math.round(b.bb.y * DEVICE_W);
-      const width  = Math.round(b.bb.w * DEVICE_W);
-      const height = Math.round(b.bb.h * DEVICE_W);
+      };
 
       switch (b.tipo) {
+        case 'Label':
+          Object.assign(base.props, { texto: b.texto || '', color: '#000000', bold: false });
+          break;
         case 'InputBox':
         case 'InputFecha':
-          elementos.push({
-            id: crypto.randomUUID(), tipo: b.tipo, x, y, width, height,
-            props: { placeholder: b.texto || '', fontSize: 16, ...override }
-          }); break;
+          base.props.placeholder = b.texto || '';
+          break;
         case 'Boton':
-          elementos.push({
-            id: crypto.randomUUID(), tipo: 'Boton', x, y, width, height,
-            props: { texto: b.texto || 'Botón', color:'#2563eb', textColor:'#fff', fontSize:16, ...override }
-          }); break;
+          Object.assign(base.props, {
+            texto: b.texto || 'Botón',
+            color: '#007bff',
+            textColor: '#ffffff',
+            borderRadius: 4
+          });
+          break;
+        case 'Checkbox':
+          base.props.texto = b.texto || 'Opción';
+          break;
+        case 'Selector':
+          base.props.options = b.options || ['Opción 1', 'Opción 2'];
+          break;
         case 'Tabla':
-          elementos.push({
-            id: crypto.randomUUID(), tipo:'Tabla', x, y, width, height,
-            props:{ headers:b.headers||[], data:b.filas||[],
-              colWidths:(b.headers||[]).map(()=>Math.floor(width/(b.headers||[]).length)),
-              fontSize:14, ...override }
-          }); break;
+          Object.assign(base.props, {
+            headers: b.headers || [],
+            data: b.filas || [],
+            colWidths: (b.headers || []).map(() => 100)
+          });
+          break;
+        case 'Link':
+          Object.assign(base.props, {
+            texto: b.texto || 'Ir',
+            url: b.url || 'https://ejemplo.com',
+            color: '#2563eb'
+          });
+          break;
         case 'Sidebar':
-          elementos.push({
-            id: crypto.randomUUID(), tipo:'Sidebar', x, y, width, height,
-            props:{ titulo:b.texto||'Menú', items:b.items||[], visible:true, ...override }
-          }); break;
-            default: // Label
-              elementos.push({
-                id: crypto.randomUUID(), tipo: 'Label', x, y, width, height,
-                props: {
-                  texto: b.texto || '',
-                  fontSize: Math.max(10, Math.round(height * 0.8)), // estimación real basada en altura
-                  color: '#000',
-                  ...override
-                }
-              });
-
+          Object.assign(base.props, {
+            titulo : b.titulo || '(SIN_TÍTULO)',
+            items  : (b.items || []).map(it => ({
+              texto: it.texto,
+              nombrePestana: 'Pantalla 1'
+            })),
+            visible: true
+          });
+          break;
       }
-    };
-
-    // Boxes que NO pertenecen a un par inline
-    boxes.forEach(b => {
-      if (inlinePairs[b.texto?.toLowerCase()]?.label === b) return;
-      if (inlinePairs[b.texto?.toLowerCase()]?.input === b) return;
-      pushElement(b);
+      return base;
     });
-
-    // Añadir pares inline (label + input)
-    Object.values(inlinePairs).forEach(({ label, input }) => {
-      pushElement(label, { valign:'middle' });
-      pushElement(input);
-    });
-
-    /* ---------- 6. Guardar proyecto ---------- */
-    const contenido = {
-      dispositivo: tipoDispositivo,
-      pestañas: [{ id:'tab1', name: nombrePantalla, elementos }],
-      clases: [],               // SIN CRUD
-      relaciones: [],
-      clavesPrimarias: {}
-    };
-
-    const proyecto = await proyectoService.crear({
-      nombre: nombrePantalla,
-      descripcion: 'Importado desde boceto de diseño',
+    // Guardar automáticamente al detectar boceto
+    await proyectoService.crear({
+      nombre: 'Nuevo proyecto desde boceto',
+      dispositivo: 'phoneStandard',
       idUsuario: req.usuario.idUsuario,
-      contenido: JSON.stringify(contenido),
-      creadoEn: new Date().toISOString()
+      contenido: JSON.stringify({
+        dispositivo: 'phoneStandard',
+        pestañas: [{ id: 'tab1', name: 'Pantalla 1', elementos }],
+        clases: [],
+        relaciones: [],
+        clavesPrimarias: {}
+      })
     });
 
-    return res.status(201).json({
-      mensaje: '✅ Boceto analizado y proyecto creado correctamente',
-      proyecto
+    /* ─── 7. Respuesta ─── */
+    res.status(200).json({
+      dispositivo: 'phoneStandard',
+      pestañas: [{ id: 'tab1', name: 'Pantalla 1', elementos }],
+      clases: [],
+      relaciones: [],
+      clavesPrimarias: {},
+      raw: toolCall.function.arguments
     });
 
   } catch (err) {
-    console.error('[importarBoceto] Error:', err?.response?.data || err.message);
-    return res.status(500).json({ error: 'Error interno al analizar el boceto.' });
+    console.error('[importarBoceto] Error crítico:', err?.response?.data || err.message);
+    res.status(500).json({ error: 'Error interno al analizar el boceto.' });
   }
 }
-
 }
       
 module.exports = new ProyectoController();
