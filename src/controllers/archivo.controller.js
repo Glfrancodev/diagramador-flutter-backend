@@ -43,8 +43,13 @@ class ArchivoController {
 
         const stream = await minioClient.getObject(bucket, key);
 
-        // Header para visualizar directamente si es imagen, o descargar si es otro
-        res.setHeader('Content-Type', archivo.tipo.startsWith('imagen') ? 'image/png' : 'application/octet-stream');
+        // ✅ NUEVO BLOQUE para detectar tipo
+        let contentType = 'application/octet-stream';
+        if (archivo.tipo === 'imagen') contentType = 'image/png';
+        if (archivo.tipo === 'video')  contentType = 'video/mp4';
+        if (archivo.tipo === 'audio')  contentType = 'audio/mpeg';
+
+        res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Disposition', `inline; filename="${archivo.nombre}"`);
 
         stream.pipe(res);
@@ -55,14 +60,18 @@ class ArchivoController {
     }
 
 
-  async listar(req, res) {
+
+    async listar(req, res) {
     try {
-      const archivos = await archivoService.listarPorProyecto(req.params.idProyecto);
-      res.json(archivos);
+        const archivos = await archivoService.listarPorProyecto(
+        req.params.idProyecto,
+        req.query.tipo // ✅ nuevo
+        );
+        res.json(archivos);
     } catch (err) {
-      res.status(500).json({ error: err.message });
+        res.status(500).json({ error: err.message });
     }
-  }
+    }
 
   async obtener(req, res) {
     try {

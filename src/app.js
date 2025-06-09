@@ -5,18 +5,33 @@ require('dotenv').config(); // Asegúrate que esté antes de usar process.env
 
 const app = express();
 
-/* ---------- CORS ---------- */
+const whitelist = [
+  'http://localhost:5173',
+  'https://tuapp.com', // ← producción
+];
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*', // Defínelo en Railway
-  methods: ["GET", "POST", "PUT", "DELETE"],
+  origin: (origin, callback) => {
+    if (!origin || whitelist.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('No permitido por CORS'));
+    }
+  },
   credentials: true,
 }));
+
 
 /* ---------- Seguridad y logs (opcional) ---------- */
 const helmet = require('helmet');
 const morgan = require('morgan');
 
-app.use(helmet()); // Seguridad básica HTTP
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' }
+  })
+);
+
 app.use(morgan('dev')); // Logs de peticiones HTTP
 
 /* ---------- JSON y Rutas ---------- */

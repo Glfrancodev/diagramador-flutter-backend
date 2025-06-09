@@ -5,8 +5,11 @@ class ArchivoService {
     return await Archivo.create(data);
   }
 
-  async listarPorProyecto(idProyecto) {
-    return await Archivo.findAll({ where: { idProyecto } });
+  async listarPorProyecto(idProyecto, tipo = null) {
+    const where = { idProyecto };
+    if (tipo) where.tipo = tipo; // ✅ filtro dinámico
+
+    return await Archivo.findAll({ where });
   }
 
   async eliminar(idArchivo) {

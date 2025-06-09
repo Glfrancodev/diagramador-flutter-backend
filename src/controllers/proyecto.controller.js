@@ -23,6 +23,11 @@ function estimateFontSize(boxHeightPx) {
   return 23; // máximo estimado
 }
 
+function responsiveFontSize(context, fontSize) {
+  const screenWidth = context ? context.size.width : 375; // Default a 375 si no se pasa el contexto
+  return fontSize * (screenWidth / 375); // Ajuste basado en un tamaño de referencia
+}
+
 const DETECTOR_SCHEMA = {
   name: 'detect_ui',
   description: 'Devuelve todos los componentes UI detectados en el boceto',
@@ -232,289 +237,273 @@ async exportarProyectoFlutter(req, res) {
             height: constraints.maxHeight * ${height.toFixed(4)},
             child: ${child}
           ),`;
-
-
+  
         switch (tipo) {
-          /* ---------- BOTÓN ---------- */
-          case 'Boton':
-            return posWrap(`ElevatedButton(
-              onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFF${(props.color || '#007bff').slice(1)}),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(${props.borderRadius ?? 4})
-                )
-              ),
-              child: Align(
-                alignment: Alignment.center,
+          case 'Label': {
+            const leftPx   = `(constraints.maxWidth * ${x.toFixed(4)})`;
+            const topPx    = `(constraints.maxHeight * ${y.toFixed(4)})`;
+            const widthPx  = `(constraints.maxWidth * ${width.toFixed(4)})`;
+            const heightPx = `(constraints.maxHeight * ${height.toFixed(4)})`;
+            const fontSize = `(constraints.maxHeight * ${props.fontSize || 0.02})`;
+            const color = `Color(0xFF${(props.color || '#000000').slice(1)})`;
+            const fontWeight = props.bold ? 'FontWeight.bold' : 'FontWeight.normal';
+            const textoEscapado = (props.texto || '').replace(/'/g, "\\'");
+
+            return `
+              Positioned(
+                left: ${leftPx},
+                top: ${topPx},
+                width: ${widthPx},
+                height: ${heightPx},
                 child: Text(
-                  '${props.texto}',
+                  '${textoEscapado}',
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
+                  textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: ${props.fontSize},
-                    color: Color(0xFF${(props.textColor || '#ffffff').slice(1)})
+                    fontSize: ${fontSize},
+                    fontWeight: ${fontWeight},
+                    color: ${color}
                   )
+                )
+              ),`;
+          }
+
+case 'InputBox': {
+  const id = `InputBox${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const placeholder = (props.placeholder || 'Ingrese texto...').replace(/'/g, "\\'");
+  const fontSize = +(props.fontSize || 0.02).toFixed(4);
+
+  auxWidgets.add(`
+class _${id} extends StatefulWidget {
+  final double width;
+  final double height;
+  final double fontSizeFactor;
+  const _${id}(this.width, this.height, this.fontSizeFactor, {super.key});
+  @override
+  State<_${id}> createState() => _${id}State();
+}
+
+class _${id}State extends State<_${id}> {
+  final FocusNode _focusNode = FocusNode();
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    double realFontSize = MediaQuery.of(context).size.height * widget.fontSizeFactor;
+
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).requestFocus(_focusNode),
+      child: Container(
+        width: widget.width,
+        height: widget.height,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.black54),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        alignment: Alignment.centerLeft,
+        child: Stack(
+          children: [
+            if (_controller.text.isEmpty && !_focusNode.hasFocus)
+              Positioned.fill(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '${placeholder}',
+                    style: TextStyle(
+                      color: Colors.black38,
+                      fontSize: realFontSize,
+                    ),
+                  ),
                 ),
-              )
-            )`);
-          /* ---------- LABEL ---------- */
-          case 'Label':
-            return posWrap(`Text(
-              '${props.texto}',
-              overflow: TextOverflow.ellipsis,
+              ),
+            EditableText(
+              controller: _controller,
+              focusNode: _focusNode,
+              style: TextStyle(fontSize: realFontSize, color: Colors.black),
+              cursorColor: Colors.blue,
+              backgroundCursorColor: Colors.transparent,
               maxLines: 1,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: ${props.fontSize},
-                fontWeight: ${props.bold ? 'FontWeight.bold' : 'FontWeight.normal'},
-                color: Color(0xFF${(props.color || '#000000').slice(1)})
-              )
-            )`);
-          /* ---------- INPUTBOX ---------- */
-          case 'InputBox':
-            return posWrap(`TextField(
-              decoration: InputDecoration(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                border: OutlineInputBorder(),
-                hintText: '${props.placeholder ?? ''}',
-              ),
-              style: TextStyle(fontSize: ${props.fontSize}),
-            )`);
-          /* ---------- INPUTFECHA ---------- */
-          case 'InputFecha': {
-            const id = `inputfecha_${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
-            auxWidgets.add(`
-          class _InputFechaWidget_${id} extends StatefulWidget {
-            const _InputFechaWidget_${id}({super.key});
-            @override
-            State<_InputFechaWidget_${id}> createState() => _InputFechaWidgetState_${id}();
-          }
-          class _InputFechaWidgetState_${id} extends State<_InputFechaWidget_${id}> {
-            DateTime? selectedDate;
-            final TextEditingController controller = TextEditingController();
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+  `);
 
-            Future<void> _selectDate(BuildContext context) async {
-              final DateTime? picked = await showDatePicker(
-                context: context,
-                initialDate: selectedDate ?? DateTime.now(),
-                firstDate: DateTime(1900),
-                lastDate: DateTime(2100),
-              );
-              if (picked != null && picked != selectedDate) {
-                setState(() {
-                  selectedDate = picked;
-                  controller.text = "\${picked.toLocal()}".split(' ')[0];
-                });
-              }
-            }
+  return posWrap(`_${id}(
+    constraints.maxWidth * ${el.width.toFixed(4)},
+    constraints.maxHeight * ${el.height.toFixed(4)},
+    ${fontSize}
+  )`);
+}
 
-            @override
-            Widget build(BuildContext context) {
-              return TextField(
-                controller: controller,
-                readOnly: true,
-                onTap: () => _selectDate(context),
-                decoration: const InputDecoration(
-                  hintText: 'dd/mm/aaaa',
-                  suffixIcon: Icon(Icons.calendar_today_outlined, size: 20),
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+
+case 'InputFecha': {
+  const id = `InputFecha${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const placeholder = (props.placeholder || 'Seleccionar fecha...').replace(/'/g, "\\'");
+  const fontSize = +(props.fontSize || 0.02).toFixed(4);
+
+  auxWidgets.add(`
+class _${id} extends StatefulWidget {
+  final double width;
+  final double height;
+  final double fontSizeFactor;
+  const _${id}(this.width, this.height, this.fontSizeFactor, {super.key});
+  @override
+  State<_${id}> createState() => _${id}State();
+}
+
+class _${id}State extends State<_${id}> {
+  final FocusNode _focusNode = FocusNode();
+  final TextEditingController _controller = TextEditingController();
+  DateTime? selectedDate;
+
+  Future<void> _selectDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: selectedDate ?? DateTime.now(),
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2100),
+    );
+    if (picked != null) {
+      setState(() {
+        selectedDate = picked;
+        _controller.text = "\${picked.toLocal()}".split(' ')[0];
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    double realFontSize = MediaQuery.of(context).size.height * widget.fontSizeFactor;
+
+    return GestureDetector(
+      onTap: _selectDate,
+      child: Container(
+        width: widget.width,
+        height: widget.height,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          border: Border.all(color: Colors.black54),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        alignment: Alignment.centerLeft,
+        child: Stack(
+          children: [
+            if (_controller.text.isEmpty)
+              Positioned.fill(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '${placeholder}',
+                    style: TextStyle(color: Colors.black38, fontSize: realFontSize),
+                  ),
                 ),
-
-                style: TextStyle(fontSize: ${props.fontSize}),
-              );
-            }
-          }
-            `);
-            return posWrap(`_InputFechaWidget_${id}()`);
-          }
-          /* ---------- SELECTOR ---------- */
-          case 'Selector': {
-            const opciones = JSON.stringify(props.options);
-            const id = `dropdown_${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
-            auxWidgets.add(`
-      class _DropdownWidget_${id} extends StatefulWidget {
-        @override
-        State<_DropdownWidget_${id}> createState() => _DropdownWidgetState_${id}();
-      }
-      class _DropdownWidgetState_${id} extends State<_DropdownWidget_${id}> {
-        String? val = '${props.options[0]}';
-
-        @override
-        Widget build(BuildContext context) {
-          return Container(
-            alignment: Alignment.center,
-            padding: const EdgeInsets.symmetric(horizontal: 4),
-            child: DropdownButton<String>(
-              isExpanded: true,
-              value: val,
-              underline: const SizedBox.shrink(),
-              style: TextStyle(
-                fontSize: ${props.fontSize},
-                color: Colors.black,
               ),
-              dropdownColor: Colors.white,
-              items: ${opciones}.map<DropdownMenuItem<String>>(
-                (o) => DropdownMenuItem(
-                  value: o,
-                  child: Center(
+            IgnorePointer(
+              ignoring: true,
+              child: EditableText(
+                controller: _controller,
+                focusNode: _focusNode,
+                style: TextStyle(fontSize: realFontSize, color: Colors.black),
+                cursorColor: Colors.transparent,
+                backgroundCursorColor: Colors.transparent,
+                maxLines: 1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+  `);
+
+  return posWrap(`_${id}(
+    constraints.maxWidth * ${el.width.toFixed(4)},
+    constraints.maxHeight * ${el.height.toFixed(4)},
+    ${fontSize}
+  )`);
+}
+
+
+
+          case 'Selector': {
+            const id = `Dropdown${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+            const leftPx   = `(constraints.maxWidth * ${x.toFixed(4)})`;
+            const topPx    = `(constraints.maxHeight * ${y.toFixed(4)})`;
+            const widthPx  = `(constraints.maxWidth * ${width.toFixed(4)})`;
+            const heightPx = `(constraints.maxHeight * ${height.toFixed(4)})`;
+            const fontSize = `(MediaQuery.of(context).size.height * ${props.fontSize || 0.02})`;
+            const options = props.options || [];
+
+            // Serializamos las opciones de forma segura para Dart
+            const dartOptions = `[${options.map(o => `'${o.replace(/'/g, "\\'")}'`).join(',')}]`;
+
+            // Widget auxiliar único
+            auxWidgets.add(`
+          class _${id} extends StatefulWidget {
+            const _${id}({super.key});
+            @override
+            State<_${id}> createState() => _${id}State();
+          }
+
+          class _${id}State extends State<_${id}> {
+            String? val = ${dartOptions}.first;
+
+          @override
+          Widget build(BuildContext context) {
+            return Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey), // Borde igual al InputBox
+                borderRadius: BorderRadius.circular(4),
+                color: Colors.white
+              ),
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: DropdownButton<String>(
+                isExpanded: true,
+                value: val,
+                underline: const SizedBox.shrink(), // Quitamos la línea inferior por defecto
+                style: TextStyle(
+                  fontSize: ${fontSize},
+                  color: Colors.black,
+                ),
+                dropdownColor: Colors.white,
+                items: ${dartOptions}.map<DropdownMenuItem<String>>(
+                  (o) => DropdownMenuItem(
+                    value: o,
                     child: Text(
                       o,
+                      textAlign: TextAlign.center,
                       overflow: TextOverflow.ellipsis,
                       maxLines: 1,
                     ),
                   )
-                )
-              ).toList(),
-              onChanged: (v) => setState(() => val = v),
-            ),
-          );
-        }
-      }
-            `);
-            return posWrap(`_DropdownWidget_${id}()`);
+                ).toList(),
+                onChanged: (v) => setState(() => val = v),
+              ),
+            );
           }
 
-          /* ---------- CHECKBOX ---------- */
-          case 'Checkbox':
-            if (![...auxWidgets].some((c) => c.includes('class _CheckboxWidget'))) {
-              auxWidgets.add(`
-      class _CheckboxWidget extends StatefulWidget {
-        final String texto;
-        final double fontSize;
-        const _CheckboxWidget({required this.texto, required this.fontSize});
-        @override
-        State<_CheckboxWidget> createState() => _CheckboxWidgetState();
-      }
-      class _CheckboxWidgetState extends State<_CheckboxWidget> {
-        bool value = false;
-        @override
-        Widget build(BuildContext context) {
-          return Container(
-            alignment: Alignment.centerLeft,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Checkbox(
-                  value: value,
-                  onChanged: (v) => setState(() => value = v!),
-                ),
-                Expanded(
-                  child: Container(
-                    alignment: Alignment.centerLeft,
-                    constraints: const BoxConstraints(minWidth: 0),
-                    child: Text(
-                      widget.texto,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: widget.fontSize),
-                    ),
-                  ),
-                )
-              ],
-            ),
-          );
-        }
-      }
-              `);
-            }
-            return posWrap(`_CheckboxWidget(
-              texto: '${props.texto}',
-              fontSize: ${props.fontSize}
-            )`);
-
-
-          /* ---------- LINK ---------- */
-          case 'Link':
-          return posWrap(`GestureDetector(
-            onTap: () async {
-              final uri = Uri.parse('${props.url}');
-              if (await canLaunchUrl(uri)) {
-                await launchUrl(uri, mode: LaunchMode.externalApplication);
-              }
-            },
-            child: Text('${props.texto}',
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                decoration: TextDecoration.underline,
-                fontSize: ${props.fontSize},
-                color: Color(0xFF${(props.color || '#2563eb').slice(1)})
-              )
-            ),
-          )`);
-          /* ---------- TABLA ---------- */
-          case 'Tabla': {
-            const encabezado = props.headers.map(
-              (h, i) => `
-                TableCell(
-                  child: Container(
-                    width: ${props.colWidths[i]},
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Color(0xFFe5e7eb),
-                      border: Border.all(color: Colors.grey),
-                    ),
-                    child: Text(
-                      '${h}',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: ${props.fontSize}
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  )
-                )
-            `).join(',');
-
-            const filas = props.data.map(
-              (fila) => `
-                TableRow(children: [
-                  ${fila.map(
-                    (c, i) => `
-                      TableCell(
-                        child: Container(
-                          width: ${props.colWidths[i]},
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: Colors.grey),
-                          ),
-                          child: Text(
-                            '${c}',
-                            style: TextStyle(fontSize: ${props.fontSize}),
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        )
-                      )
-                  `).join(',')}
-                ])
-            `).join(',');
-
-            return posWrap(`
-              SizedBox(
-                width: ${width.toFixed(2)},
-                height: ${height.toFixed(2)},
-                child: Scrollbar(
-                  thumbVisibility: true,
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.vertical,
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Table(
-                        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-                        columnWidths: {
-                          ${props.colWidths.map((w, i) => `${i}: FixedColumnWidth(${w})`).join(',')}
-                        },
-                        children: [
-                          TableRow(children: [${encabezado}]),
-                          ${filas}
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              )
+          }
             `);
+
+            // Componente posicionado
+            return `
+              Positioned(
+                left: ${leftPx},
+                top: ${topPx},
+                width: ${widthPx},
+                height: ${heightPx},
+                child: const _${id}()
+              ),`;
           }
 
 
@@ -575,66 +564,72 @@ class _${clase}State extends State<${clase}> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       body: Center(
         child: SizedBox(
           width: ${canvasSize}.width,
           height: ${canvasSize}.height,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              return Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  ${widgets}
-                  ${sidebar ? `
-                  /* ---------- Sidebar ---------- */
-                  AnimatedPositioned(
-                    duration: const Duration(milliseconds: 300),
-                    left: visible ? 0 : -constraints.maxWidth * ${sidebar.width.toFixed(4)},
-                    top: 0,
-                    width: constraints.maxWidth * ${sidebar.width.toFixed(4)},
-                    height: constraints.maxHeight * ${sidebar.height.toFixed(4)},
-                    child: Material(
-                      elevation: 8,
-                      color: const Color(0xFF1f2937),
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 16, left: 8, right: 8),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('${sidebar.props.titulo}',
-                                style: const TextStyle(color: Colors.white, fontSize: 18)),
-                            const SizedBox(height: 12),
-                            Expanded(child: ListView(children: [${items}]))
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-
-                  /* ---------- Botón toggle ---------- */
-                  AnimatedPositioned(
-                    duration: const Duration(milliseconds: 300),
-                    left: visible
-                      ? constraints.maxWidth * ${sidebar.width.toFixed(4)} - 40
-                      : 0,
-                    top: 16,
-                    child: GestureDetector(
-                      onTap: () => setState(() => visible = !visible),
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF2563eb),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Icon(Icons.menu, color: Colors.white, size: 20),
-                      ),
-                    ),
-                  ),` : ''}
-                ],
-              );
-            }
+child: LayoutBuilder(
+  builder: (context, constraints) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () => FocusScope.of(context).unfocus(), // Cierra cualquier input activo
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          ${widgets}
+          ${sidebar ? `
+          /* ---------- Sidebar ---------- */
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 300),
+            left: visible ? 0 : -constraints.maxWidth * ${sidebar.width.toFixed(4)},
+            top: 0,
+            width: constraints.maxWidth * ${sidebar.width.toFixed(4)},
+            height: constraints.maxHeight * ${sidebar.height.toFixed(4)},
+            child: Material(
+              elevation: 8,
+              color: const Color(0xFF1f2937),
+              child: Padding(
+                padding: const EdgeInsets.only(top: 16, left: 8, right: 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('${sidebar.props.titulo}',
+                        style: const TextStyle(color: Colors.white, fontSize: 18)),
+                    const SizedBox(height: 12),
+                    Expanded(child: ListView(children: [${items}])),
+                  ],
+                ),
+              ),
+            ),
           ),
+
+          /* ---------- Botón toggle ---------- */
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 300),
+            left: visible
+              ? constraints.maxWidth * ${sidebar.width.toFixed(4)} - 40
+              : 0,
+            top: 16,
+            child: GestureDetector(
+              onTap: () => setState(() => visible = !visible),
+              child: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF2563eb),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Icon(Icons.menu, color: Colors.white, size: 20),
+              ),
+            ),
+          ),` : ''}
+        ],
+      ),
+    );
+  }
+),
+
 
         ),
       ),
@@ -668,7 +663,6 @@ void main() {
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
   runApp(const MyApp());
 }
-
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -716,6 +710,7 @@ class MyApp extends StatelessWidget {
     res.status(500).json({ error: 'No se pudo exportar el proyecto Flutter.' });
   }
 }
+
 
 
 async importarBoceto(req, res) {
