@@ -268,67 +268,55 @@ async exportarProyectoFlutter(req, res) {
                 )
               ),`;
           }
-
-case 'InputBox': {
-  const id = `InputBox${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
-  const placeholder = (props.placeholder || 'Ingrese texto...').replace(/'/g, "\\'");
+case 'Checkbox': {
+  const id = `CheckBox${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const label = (props.texto || 'Opción').replace(/'/g, "\\'");
   const fontSize = +(props.fontSize || 0.02).toFixed(4);
 
   auxWidgets.add(`
 class _${id} extends StatefulWidget {
-  final double width;
-  final double height;
   final double fontSizeFactor;
-  const _${id}(this.width, this.height, this.fontSizeFactor, {super.key});
+  final double boxSizeFactor;
+  const _${id}(this.fontSizeFactor, this.boxSizeFactor, {super.key});
   @override
   State<_${id}> createState() => _${id}State();
 }
 
 class _${id}State extends State<_${id}> {
-  final FocusNode _focusNode = FocusNode();
-  final TextEditingController _controller = TextEditingController();
+  bool checked = false;
 
   @override
   Widget build(BuildContext context) {
-    double realFontSize = MediaQuery.of(context).size.height * widget.fontSizeFactor;
+    final fontSize = MediaQuery.of(context).size.height * widget.fontSizeFactor;
+    final boxSize  = MediaQuery.of(context).size.height * widget.boxSizeFactor * 0.2;
 
     return GestureDetector(
-      onTap: () => FocusScope.of(context).requestFocus(_focusNode),
-      child: Container(
-        width: widget.width,
-        height: widget.height,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: Colors.black54),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        alignment: Alignment.centerLeft,
-        child: Stack(
-          children: [
-            if (_controller.text.isEmpty && !_focusNode.hasFocus)
-              Positioned.fill(
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    '${placeholder}',
-                    style: TextStyle(
-                      color: Colors.black38,
-                      fontSize: realFontSize,
-                    ),
-                  ),
-                ),
-              ),
-            EditableText(
-              controller: _controller,
-              focusNode: _focusNode,
-              style: TextStyle(fontSize: realFontSize, color: Colors.black),
-              cursorColor: Colors.blue,
-              backgroundCursorColor: Colors.transparent,
+      onTap: () => setState(() => checked = !checked),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: boxSize,
+            height: boxSize,
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.black54),
+              borderRadius: BorderRadius.circular(4),
+              color: checked ? Colors.blue : Colors.white,
+            ),
+            child: checked
+              ? const Icon(Icons.check, size: 16, color: Colors.white)
+              : null,
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              '${label}',
+              style: TextStyle(fontSize: fontSize),
+              overflow: TextOverflow.ellipsis,
               maxLines: 1,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -336,101 +324,173 @@ class _${id}State extends State<_${id}> {
   `);
 
   return posWrap(`_${id}(
-    constraints.maxWidth * ${el.width.toFixed(4)},
-    constraints.maxHeight * ${el.height.toFixed(4)},
-    ${fontSize}
+    ${fontSize},
+    ${el.height.toFixed(4)}  // ← se usa la altura del bounding box como base del cuadrado
   )`);
 }
 
+          case 'InputBox': {
+            const id = `InputBox${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+            const placeholder = (props.placeholder || 'Ingrese texto...').replace(/'/g, "\\'");
+            const fontSize = +(props.fontSize || 0.02).toFixed(4);
 
-case 'InputFecha': {
-  const id = `InputFecha${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
-  const placeholder = (props.placeholder || 'Seleccionar fecha...').replace(/'/g, "\\'");
-  const fontSize = +(props.fontSize || 0.02).toFixed(4);
+            auxWidgets.add(`
+          class _${id} extends StatefulWidget {
+            final double width;
+            final double height;
+            final double fontSizeFactor;
+            const _${id}(this.width, this.height, this.fontSizeFactor, {super.key});
+            @override
+            State<_${id}> createState() => _${id}State();
+          }
 
-  auxWidgets.add(`
-class _${id} extends StatefulWidget {
-  final double width;
-  final double height;
-  final double fontSizeFactor;
-  const _${id}(this.width, this.height, this.fontSizeFactor, {super.key});
-  @override
-  State<_${id}> createState() => _${id}State();
-}
+          class _${id}State extends State<_${id}> {
+            final FocusNode _focusNode = FocusNode();
+            final TextEditingController _controller = TextEditingController();
 
-class _${id}State extends State<_${id}> {
-  final FocusNode _focusNode = FocusNode();
-  final TextEditingController _controller = TextEditingController();
-  DateTime? selectedDate;
+            @override
+            Widget build(BuildContext context) {
+              double realFontSize = MediaQuery.of(context).size.height * widget.fontSizeFactor;
 
-  Future<void> _selectDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: selectedDate ?? DateTime.now(),
-      firstDate: DateTime(1900),
-      lastDate: DateTime(2100),
-    );
-    if (picked != null) {
-      setState(() {
-        selectedDate = picked;
-        _controller.text = "\${picked.toLocal()}".split(' ')[0];
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    double realFontSize = MediaQuery.of(context).size.height * widget.fontSizeFactor;
-
-    return GestureDetector(
-      onTap: _selectDate,
-      child: Container(
-        width: widget.width,
-        height: widget.height,
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: Colors.black54),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        alignment: Alignment.centerLeft,
-        child: Stack(
-          children: [
-            if (_controller.text.isEmpty)
-              Positioned.fill(
-                child: Align(
+              return GestureDetector(
+                onTap: () => FocusScope.of(context).requestFocus(_focusNode),
+                child: Container(
+                  width: widget.width,
+                  height: widget.height,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.black54),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
                   alignment: Alignment.centerLeft,
-                  child: Text(
-                    '${placeholder}',
-                    style: TextStyle(color: Colors.black38, fontSize: realFontSize),
+                  child: Stack(
+                    children: [
+                      if (_controller.text.isEmpty && !_focusNode.hasFocus)
+                        Positioned.fill(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              '${placeholder}',
+                              style: TextStyle(
+                                color: Colors.black38,
+                                fontSize: realFontSize,
+                              ),
+                            ),
+                          ),
+                        ),
+                      EditableText(
+                        controller: _controller,
+                        focusNode: _focusNode,
+                        style: TextStyle(fontSize: realFontSize, color: Colors.black),
+                        cursorColor: Colors.blue,
+                        backgroundCursorColor: Colors.transparent,
+                        maxLines: 1,
+                      ),
+                    ],
                   ),
                 ),
-              ),
-            IgnorePointer(
-              ignoring: true,
-              child: EditableText(
-                controller: _controller,
-                focusNode: _focusNode,
-                style: TextStyle(fontSize: realFontSize, color: Colors.black),
-                cursorColor: Colors.transparent,
-                backgroundCursorColor: Colors.transparent,
-                maxLines: 1,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-  `);
+              );
+            }
+          }
+            `);
 
-  return posWrap(`_${id}(
-    constraints.maxWidth * ${el.width.toFixed(4)},
-    constraints.maxHeight * ${el.height.toFixed(4)},
-    ${fontSize}
-  )`);
-}
+            return posWrap(`_${id}(
+              constraints.maxWidth * ${el.width.toFixed(4)},
+              constraints.maxHeight * ${el.height.toFixed(4)},
+              ${fontSize}
+            )`);
+          }
+
+
+          case 'InputFecha': {
+            const id = `InputFecha${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+            const placeholder = (props.placeholder || 'Seleccionar fecha...').replace(/'/g, "\\'");
+            const fontSize = +(props.fontSize || 0.02).toFixed(4);
+
+            auxWidgets.add(`
+          class _${id} extends StatefulWidget {
+            final double width;
+            final double height;
+            final double fontSizeFactor;
+            const _${id}(this.width, this.height, this.fontSizeFactor, {super.key});
+            @override
+            State<_${id}> createState() => _${id}State();
+          }
+
+          class _${id}State extends State<_${id}> {
+            final FocusNode _focusNode = FocusNode();
+            final TextEditingController _controller = TextEditingController();
+            DateTime? selectedDate;
+
+            Future<void> _selectDate() async {
+              final picked = await showDatePicker(
+                context: context,
+                initialDate: selectedDate ?? DateTime.now(),
+                firstDate: DateTime(1900),
+                lastDate: DateTime(2100),
+              );
+              if (picked != null) {
+                setState(() {
+                  selectedDate = picked;
+                  _controller.text = "\${picked.toLocal()}".split(' ')[0];
+                });
+              }
+            }
+
+            @override
+            Widget build(BuildContext context) {
+              double realFontSize = MediaQuery.of(context).size.height * widget.fontSizeFactor;
+
+              return GestureDetector(
+                onTap: _selectDate,
+                child: Container(
+                  width: widget.width,
+                  height: widget.height,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.black54),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  alignment: Alignment.centerLeft,
+                  child: Stack(
+                    children: [
+                      if (_controller.text.isEmpty)
+                        Positioned.fill(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              '${placeholder}',
+                              style: TextStyle(color: Colors.black38, fontSize: realFontSize),
+                            ),
+                          ),
+                        ),
+                      IgnorePointer(
+                        ignoring: true,
+                        child: EditableText(
+                          controller: _controller,
+                          focusNode: _focusNode,
+                          style: TextStyle(fontSize: realFontSize, color: Colors.black),
+                          cursorColor: Colors.transparent,
+                          backgroundCursorColor: Colors.transparent,
+                          maxLines: 1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+          }
+            `);
+
+            return posWrap(`_${id}(
+              constraints.maxWidth * ${el.width.toFixed(4)},
+              constraints.maxHeight * ${el.height.toFixed(4)},
+              ${fontSize}
+            )`);
+          }
 
 
 
