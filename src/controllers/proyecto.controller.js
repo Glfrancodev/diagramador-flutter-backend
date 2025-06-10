@@ -286,6 +286,32 @@ async exportarProyectoFlutter(req, res) {
                         ),
                       ),
                     ),`;
+case 'Video':
+  return `
+    Positioned(
+      left: constraints.maxWidth * ${el.x.toFixed(4)},
+      top: constraints.maxHeight * ${el.y.toFixed(4)},
+      width: constraints.maxWidth * ${el.width.toFixed(4)},
+      height: constraints.maxHeight * ${el.height.toFixed(4)},
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(${el.props.borderRadius}),
+        child: VideoPlayerWidget(
+          url: '\${dotenv.env['API_URL']}/api/archivos/${el.props.idArchivo}/descargar',
+        ),
+      ),
+    ),`;
+
+case 'Audio':
+  return `
+    Positioned(
+      left: constraints.maxWidth * ${el.x.toFixed(4)},
+      top: constraints.maxHeight * ${el.y.toFixed(4)},
+      width: constraints.maxWidth * ${el.width.toFixed(4)},
+      height: constraints.maxHeight * ${el.height.toFixed(4)},
+      child: AudioPlayerWidget(
+        url: '\${dotenv.env['API_URL']}/api/archivos/${el.props.idArchivo}/descargar',
+      ),
+    ),`;
 
           case 'Checkbox': {
             const id = `CheckBox${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
