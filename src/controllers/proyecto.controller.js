@@ -1005,6 +1005,8 @@ const pantallaCode = `
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart'; // ← IMPORTANTE
 import 'package:url_launcher/url_launcher.dart';
+import 'package:prueba2/widgets/video_player_widget.dart';
+import 'package:prueba2/widgets/audio_player_widget.dart';
 
 /* ==== Widgets auxiliares generados ==== */
 ${[...auxWidgets].join('\n\n')}
