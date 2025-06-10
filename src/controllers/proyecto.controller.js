@@ -944,7 +944,7 @@ const navbarItems = bottomNavbar?.props?.items?.map((it, index) => `
         children: [
           Icon(
             Icons.${it.icono}, // Asumimos que se está usando un ícono como 'user' o 'video'
-            size: MediaQuery.of(context).size.height * ${bottomNavbar.props.iconSize},
+            size: MediaQuery.of(context).size.height * ${bottomNavbar.props.fontSize},
             color: selectedIndex == ${index} ? Colors.white : Color(0xFF${bottomNavbar.props.colorInactivo.replace('#', '')}),
           ),
           Text(
