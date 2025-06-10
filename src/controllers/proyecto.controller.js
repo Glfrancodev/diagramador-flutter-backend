@@ -455,6 +455,7 @@ class _${id} extends StatelessWidget {
                         width: MediaQuery.of(context).size.width * colWidths[i],
                         decoration: BoxDecoration(
                           border: Border.all(color: Colors.black12),
+                          color: Color(0xFFFFFFFF),
                         ),
                         child: Text(
                           fila[i],
@@ -717,7 +718,7 @@ case 'Circulo': {
 
           case 'InputFecha': {
             const id = `InputFecha${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
-            const placeholder = (props.placeholder || 'Seleccionar fecha...').replace(/'/g, "\\'");
+            const placeholder = (props.placeholder || 'dd/mm/aaaa').replace(/'/g, "\\'");
             const fontSize = +(props.fontSize || 0.02).toFixed(4);
 
             auxWidgets.add(`
@@ -895,9 +896,9 @@ case 'Circulo': {
         .filter((e) => e.tipo !== 'Sidebar')
         .map(generarWidget)
         .join('\n              ');
-
-      const sidebar = pest.elementos.find((e) => e.tipo === 'Sidebar');
-      const items = sidebar?.props?.items?.map((it) => `
+const bottomNavbar = pest.elementos.find((e) => e.tipo === 'BottomNavbar');
+const sidebar = pest.elementos.find((e) => e.tipo === 'Sidebar');
+const items = sidebar?.props?.items?.map((it) => `
               Container(
                 margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
                 decoration: BoxDecoration(
@@ -912,14 +913,50 @@ case 'Circulo': {
                 ),
               ),`).join('') || '';
 
-      const sidebarWidth     = sidebar?.width?.toFixed(2) || '200';
-      const sidebarHeight    = sidebar?.height?.toFixed(2) || canvasSize.split(',')[1];
-      const visibleDefault   = sidebar?.props?.visible !== false;
-      const sidebarWidthNum  = parseFloat(sidebar?.width) || 200;
+const navbarItems = bottomNavbar?.props?.items?.map((it, index) => `
+  GestureDetector(
+    onTap: () => setState(() {
+      selectedIndex = ${index};  // Cambia el índice cuando el ítem es tocado
+    }),
+    child: Container(
+      padding: EdgeInsets.symmetric(vertical: 10),
+      color: selectedIndex == ${index} ? Color(0xFF${bottomNavbar.props.colorActivo.replace('#', '')}) : Color(0xFF${bottomNavbar.props.colorInactivo.replace('#', '')}),
+      child: Column(
+        children: [
+          Icon(
+            Icons.${it.icono}, // Asumimos que se está usando un ícono como 'user' o 'video'
+            size: MediaQuery.of(context).size.height * ${bottomNavbar.props.iconSize},
+            color: selectedIndex == ${index} ? Colors.white : Color(0xFF${bottomNavbar.props.colorInactivo.replace('#', '')}),
+          ),
+          Text(
+            '${it.label}',
+            style: TextStyle(
+              fontSize: MediaQuery.of(context).size.height * ${bottomNavbar.props.fontSize},
+              color: selectedIndex == ${index} ? Colors.white : Color(0xFF${bottomNavbar.props.colorInactivo.replace('#', '')}),
+            ),
+          ),
+        ],
+      ),
+    ),
+  ),
+`).join('') || '';
 
-      /* ---------- Código final .dart de la pantalla ---------- */
-      const pantallaCode = `
+const bottomNavbarWidth = bottomNavbar?.width || 1.0;  // Toma el valor de la base de datos para el ancho
+const bottomNavbarHeight = bottomNavbar?.height || 0.1; // Toma el valor de la base de datos para la altura
+const fontSize = bottomNavbar?.props?.fontSize || 0.0237; // Toma el valor de la base de datos para el tamaño de fuente
+const colorActivo = bottomNavbar?.props?.colorActivo || '#2563eb'; // Toma el valor de la base de datos para el color activo
+const colorInactivo = bottomNavbar?.props?.colorInactivo || '#666666'; // Toma el valor de la base de datos para el color inactivo
+const fondo = bottomNavbar?.props?.fondo || '#ffffff'; // Toma el valor de la base de datos para el fondo
+const borderRadius = bottomNavbar?.props?.borderRadius || 6; // Toma el valor de la base de datos para el radio de los bordes
+const iconSize = bottomNavbar?.props?.iconSize || 0.0391; // Toma el valor de la base de datos para el tamaño de los íconos
+const selectedIndexDefault = bottomNavbar
+  ? bottomNavbar.props.items.findIndex(it => it.nombrePestana.replace(/\s+/g, '') === pest.name.replace(/\s+/g, '')) ?? 0
+  : 0;
+
+/* ---------- Código final .dart de la pantalla ---------- */
+const pantallaCode = `
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart'; // ← IMPORTANTE
 import 'package:url_launcher/url_launcher.dart';
 
 /* ==== Widgets auxiliares generados ==== */
@@ -931,7 +968,8 @@ class ${clase} extends StatefulWidget {
 }
 
 class _${clase}State extends State<${clase}> {
-  bool visible = ${visibleDefault};
+  bool visible = ${sidebar ? sidebar.props.visible : true};
+  int selectedIndex = ${selectedIndexDefault};
 
   @override
   Widget build(BuildContext context) {
@@ -941,75 +979,170 @@ class _${clase}State extends State<${clase}> {
         child: SizedBox(
           width: ${canvasSize}.width,
           height: ${canvasSize}.height,
-child: LayoutBuilder(
-  builder: (context, constraints) {
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTap: () => FocusScope.of(context).unfocus(), // Cierra cualquier input activo
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          ${widgets}
-          ${sidebar ? `
-          /* ---------- Sidebar ---------- */
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 300),
-            left: visible ? 0 : -constraints.maxWidth * ${sidebar.width.toFixed(4)},
-            top: 0,
-            width: constraints.maxWidth * ${sidebar.width.toFixed(4)},
-            height: constraints.maxHeight * ${sidebar.height.toFixed(4)},
-            child: Material(
-              elevation: 8,
-              color: const Color(0xFF1f2937),
-              child: Padding(
-                padding: const EdgeInsets.only(top: 16, left: 8, right: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () => FocusScope.of(context).unfocus(),
+                child: Stack(
+                  clipBehavior: Clip.none,
                   children: [
-                    Text('${sidebar.props.titulo}',
-                        style: const TextStyle(color: Colors.white, fontSize: 18)),
-                    const SizedBox(height: 12),
-                    Expanded(child: ListView(children: [${items}])),
+                    ${widgets}
+                    ${sidebar ? `
+
+                    /* ---------- Sidebar ---------- */
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 0),
+                      left: visible ? constraints.maxWidth * ${sidebar.x.toFixed(4)} : -constraints.maxWidth * ${sidebar.width.toFixed(4)},
+                      top: constraints.maxHeight * ${sidebar.y.toFixed(4)},
+                      width: constraints.maxWidth * ${sidebar.width.toFixed(4)},
+                      height: constraints.maxHeight * ${sidebar.height.toFixed(4)},
+                      child: Material(
+                        elevation: 8,
+                        color: Color(0xFF${sidebar.props.bgColor.replace('#', '')}),
+                        borderRadius: BorderRadius.circular(${sidebar.props.borderRadius}),
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 16, left: 8, right: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('${sidebar.props.titulo}',
+                                  style: TextStyle(
+                                    color: Color(0xFF${sidebar.props.textColor.replace('#', '')}),
+                                    fontSize: MediaQuery.of(context).size.height * ${sidebar.props.fontSize})),
+                              const SizedBox(height: 12),
+                              Expanded(
+                                child: ListView(
+                                  children: [
+                                    ${sidebar.props.items.map((item) => `
+                                    Container(
+                                      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+                                      decoration: BoxDecoration(
+                                        color: Color(0xFF${sidebar.props.itemBgColor.replace('#', '')}),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: ListTile(
+                                        dense: true,
+                                        title: Text(
+                                          '${item.texto}',
+                                          style: const TextStyle(color: Colors.white),
+                                        ),
+                                        onTap: () => Navigator.pushReplacementNamed(
+                                          context, '/${item.nombrePestana.replace(/\s+/g, '')}'),
+                                      ),
+                                    ),
+                                    `).join('')}
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    /* ---------- Botón toggle ---------- */
+                    AnimatedPositioned(
+                      duration: const Duration(milliseconds: 0),
+                      left: visible
+                        ? constraints.maxWidth * ${sidebar.x.toFixed(4)} + constraints.maxWidth * ${sidebar.width.toFixed(4)} - 50
+                        : constraints.maxWidth * ${sidebar.x.toFixed(4)} + 20,
+                      top: constraints.maxHeight * ${sidebar.y.toFixed(4)} + 16,
+                      child: GestureDetector(
+                        onTap: () => setState(() => visible = !visible),
+                        child: Container(
+                          width: 32,
+                          height: 32,
+                          decoration: BoxDecoration(
+                            color: Color(0xFF${sidebar.props.itemBgColor.replace('#', '')}),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Icon(Icons.menu, color: Colors.white, size: 20),
+                        ),
+                      ),
+                    ),
+                    ` : ''}
+
+                    ${bottomNavbar ? `
+
+                    /* ---------- BottomNavbar ---------- */
+                    Positioned(
+                      left: constraints.maxWidth * ${bottomNavbar.x.toFixed(4)},
+                      top: constraints.maxHeight * ${bottomNavbar.y.toFixed(4)},
+                      width: constraints.maxWidth * ${bottomNavbarWidth},
+                      height: constraints.maxHeight * ${bottomNavbarHeight},
+
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(${bottomNavbar.props.borderRadius}),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Color(0xFF${bottomNavbar.props.fondo.replace('#', '')}),
+                          ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            ${bottomNavbar.props.items.map((it, index) => `
+                              GestureDetector(
+                                onTap: () {
+                       if (selectedIndex != ${index}) {
+                                    setState(() {
+                                      selectedIndex = ${index};
+                                    });
+                                    Navigator.pushReplacementNamed(
+                                      context, '/${it.nombrePestana.replace(/\s+/g, '')}');
+                                  }
+                                },
+                                child: Container(
+                                  width: (constraints.maxWidth * ${bottomNavbarWidth}) / ${bottomNavbar.props.items.length}, // Ajuste de ancho uniforme
+                                  padding: EdgeInsets.symmetric(vertical: 10),
+                                  decoration: BoxDecoration(
+                                    color: Color(0xFF${bottomNavbar.props.fondo.replace('#', '')}),  // Fondo blanco
+                                    border: Border(top: BorderSide(color: selectedIndex == ${index} ? Color(0xFF${bottomNavbar.props.colorActivo.replace('#', '')}) : Colors.transparent, width: 3)),  // Linea azul al seleccionar
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      SvgPicture.asset(
+                                        'assets/icons/${it.icono}.svg',
+                                        height: MediaQuery.of(context).size.height * ${bottomNavbar.props.iconSize},
+                                        colorFilter: ColorFilter.mode(
+                                          selectedIndex == ${index} ? Color(0xFF${bottomNavbar.props.colorActivo.replace('#', '')}) : Color(0xFF${bottomNavbar.props.colorInactivo.replace('#', '')}), // Color de íconos
+                                          BlendMode.srcIn,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${it.label}',
+                                        style: TextStyle(
+                                          fontSize: MediaQuery.of(context).size.height * ${bottomNavbar.props.fontSize},
+                                          color: selectedIndex == ${index} ? Color(0xFF${bottomNavbar.props.colorActivo.replace('#', '')}) : Color(0xFF${bottomNavbar.props.colorInactivo.replace('#', '')}),  // Texto azul al seleccionar
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),`).join('')}
+
+                          ],
+                        ),
+                      ),
+                    ),),
+                    ` : ''}
                   ],
                 ),
-              ),
-            ),
+              );
+            }
           ),
-
-          /* ---------- Botón toggle ---------- */
-          AnimatedPositioned(
-            duration: const Duration(milliseconds: 300),
-            left: visible
-              ? constraints.maxWidth * ${sidebar.width.toFixed(4)} - 40
-              : 0,
-            top: 16,
-            child: GestureDetector(
-              onTap: () => setState(() => visible = !visible),
-              child: Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2563eb),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Icon(Icons.menu, color: Colors.white, size: 20),
-              ),
-            ),
-          ),` : ''}
-        ],
-      ),
-    );
-  }
-),
-
-
         ),
       ),
     );
   }
 }
-      `;
-      await fs.writeFile(path.join(screensDir, file), pantallaCode);
+`;
+
+
+await fs.writeFile(path.join(screensDir, file), pantallaCode);
+
     } /* fin for de pestañas */
 
     /* ---------- main.dart ---------- */
