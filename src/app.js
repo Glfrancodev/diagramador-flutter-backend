@@ -1,17 +1,19 @@
+require('dotenv').config(); // Asegurate que esto esté al principio
+
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const morgan = require('morgan');
 const routes = require('./routes');
-require('dotenv').config(); // Asegúrate que esté antes de usar process.env
 
 const app = express();
 
-const whitelist = [
-  'http://localhost:5173',
-  'https://tuapp.com', // ← producción
-];
+// Lee y transforma los orígenes permitidos desde el .env
+const whitelist = process.env.CORS_ORIGINS?.split(',') || [];
 
 app.use(cors({
   origin: (origin, callback) => {
+    // Permitir peticiones sin origen (como desde curl o postman)
     if (!origin || whitelist.includes(origin)) {
       callback(null, true);
     } else {
@@ -21,24 +23,19 @@ app.use(cors({
   credentials: true,
 }));
 
-
-/* ---------- Seguridad y logs (opcional) ---------- */
-const helmet = require('helmet');
-const morgan = require('morgan');
-
+// Seguridad y logs
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' }
   })
 );
+app.use(morgan('dev'));
 
-app.use(morgan('dev')); // Logs de peticiones HTTP
-
-/* ---------- JSON y Rutas ---------- */
+// JSON y rutas
 app.use(express.json());
 app.use(routes);
 
-/* ---------- Manejo de errores global ---------- */
+// Manejo global de errores
 app.use((err, req, res, next) => {
   console.error("❌ Error:", err);
   res.status(err.status || 500).json({

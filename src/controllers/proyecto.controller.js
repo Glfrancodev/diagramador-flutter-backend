@@ -268,6 +268,25 @@ async exportarProyectoFlutter(req, res) {
                 )
               ),`;
           }
+          case 'Imagen':
+  return `
+                    Positioned(
+                      left: constraints.maxWidth * ${el.x.toFixed(4)},
+                      top: constraints.maxHeight * ${el.y.toFixed(4)},
+                      width: constraints.maxWidth * ${el.width.toFixed(4)},
+                      height: constraints.maxHeight * ${el.height.toFixed(4)},
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(${el.props.borderRadius}),
+                        child: Image.network(
+                          'http://localhost:3000/api/archivos/${el.props.idArchivo}/descargar',
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) => Center(
+                            child: Icon(Icons.broken_image, size: 30),
+                          ),
+                        ),
+                      ),
+                    ),`;
+
           case 'Checkbox': {
             const id = `CheckBox${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
             const label = (props.texto || 'Opción').replace(/'/g, "\\'");
