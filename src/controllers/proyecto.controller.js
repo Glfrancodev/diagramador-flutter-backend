@@ -296,10 +296,11 @@ case 'Video':
       child: ClipRRect(
         borderRadius: BorderRadius.circular(${el.props.borderRadius}),
         child: VideoPlayerWidget(
-          url: '\${dotenv.env['API_URL']}/api/archivos/${el.props.idArchivo}/descargar',
+          url: '${process.env.FLUTTER_API_URL}/api/archivos/${el.props.idArchivo}/descargar',
         ),
       ),
     ),`;
+
 
 case 'Audio':
   return `
@@ -309,9 +310,10 @@ case 'Audio':
       width: constraints.maxWidth * ${el.width.toFixed(4)},
       height: constraints.maxHeight * ${el.height.toFixed(4)},
       child: AudioPlayerWidget(
-        url: '\${dotenv.env['API_URL']}/api/archivos/${el.props.idArchivo}/descargar',
+        url: '${process.env.FLUTTER_API_URL}/api/archivos/${el.props.idArchivo}/descargar',
       ),
     ),`;
+
 
           case 'Checkbox': {
             const id = `CheckBox${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
