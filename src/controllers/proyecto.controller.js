@@ -225,7 +225,7 @@ async exportarProyectoFlutter(req, res) {
     for (const pest of pestañas) {
       /* --- set para widgets auxiliares de ESTA pantalla --- */
       const auxWidgets = new Set();
-
+    let ovaloPainterAdded = false;
       /* --- función que crea cada widget individual --- */
       const generarWidget = (el) => {
         const { tipo, x, y, width, height, props } = el;
@@ -268,66 +268,378 @@ async exportarProyectoFlutter(req, res) {
                 )
               ),`;
           }
-case 'Checkbox': {
-  const id = `CheckBox${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
-  const label = (props.texto || 'Opción').replace(/'/g, "\\'");
+          case 'Checkbox': {
+            const id = `CheckBox${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+            const label = (props.texto || 'Opción').replace(/'/g, "\\'");
+            const fontSize = +(props.fontSize || 0.02).toFixed(4);
+
+            auxWidgets.add(`
+          class _${id} extends StatefulWidget {
+            final double fontSizeFactor;
+            final double boxSizeFactor;
+            const _${id}(this.fontSizeFactor, this.boxSizeFactor, {super.key});
+            @override
+            State<_${id}> createState() => _${id}State();
+          }
+
+          class _${id}State extends State<_${id}> {
+            bool checked = false;
+
+            @override
+            Widget build(BuildContext context) {
+              final fontSize = MediaQuery.of(context).size.height * widget.fontSizeFactor;
+              final boxSize  = MediaQuery.of(context).size.height * widget.boxSizeFactor * 0.2;
+
+              return GestureDetector(
+                onTap: () => setState(() => checked = !checked),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: boxSize,
+                      height: boxSize,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.black54),
+                        borderRadius: BorderRadius.circular(4),
+                        color: checked ? Colors.blue : Colors.white,
+                      ),
+                      child: checked
+                        ? const Icon(Icons.check, size: 16, color: Colors.white)
+                        : null,
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        '${label}',
+                        style: TextStyle(fontSize: fontSize),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
+            `);
+
+            return posWrap(`_${id}(
+              ${fontSize},
+              ${el.height.toFixed(4)}  // ← se usa la altura del bounding box como base del cuadrado
+            )`);
+          }
+
+
+case 'Boton': {
+  const texto = (props.texto || 'Botón').replace(/'/g, "\\'");
+  const color = `Color(0xFF${(props.color || '#2563eb').replace('#', '')})`;
+  const textColor = `Color(0xFF${(props.textColor || '#ffffff').replace('#', '')})`;
+  const radius = +(props.borderRadius || 8);
   const fontSize = +(props.fontSize || 0.02).toFixed(4);
 
-  auxWidgets.add(`
-class _${id} extends StatefulWidget {
-  final double fontSizeFactor;
-  final double boxSizeFactor;
-  const _${id}(this.fontSizeFactor, this.boxSizeFactor, {super.key});
-  @override
-  State<_${id}> createState() => _${id}State();
+  return posWrap(`Container(
+    decoration: BoxDecoration(
+      color: ${color},
+      borderRadius: BorderRadius.circular(${radius}),
+    ),
+    child: Center(
+      child: Text(
+        '${texto}',
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: ${textColor},
+          fontSize: MediaQuery.of(context).size.height * ${fontSize},
+          fontWeight: FontWeight.w500
+        ),
+      ),
+    ),
+  )`);
+}
+case 'Link': {
+  const texto = (props.texto || 'Enlace').replace(/'/g, "\\'");
+  const url = (props.url || '').replace(/'/g, "\\'");
+  const color = `Color(0xFF${(props.color || '#2563eb').replace('#', '')})`;
+  const fontSize = +(props.fontSize || 0.02).toFixed(4);
+
+  return posWrap(`GestureDetector(
+    onTap: () async {
+      final uri = Uri.tryParse('${url}');
+      if (uri != null && await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+    },
+    child: Text(
+      '${texto}',
+      overflow: TextOverflow.ellipsis,
+      maxLines: 1,
+      style: TextStyle(
+        color: ${color},
+        fontSize: MediaQuery.of(context).size.height * ${fontSize},
+        decoration: TextDecoration.underline,
+      ),
+    ),
+  )`);
 }
 
-class _${id}State extends State<_${id}> {
-  bool checked = false;
+case 'Tabla': {
+  const headers = props.headers || [];
+  const data = props.data || [];
+  const colWidths = props.colWidths || [];
+  const fontSize = +(props.fontSize || 0.02).toFixed(4);
+  const colCount = headers.length;
+  const id = `Tabla${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+
+  auxWidgets.add(`
+class _${id} extends StatelessWidget {
+  final double fontSize;
+  final List<String> headers;
+  final List<List<String>> data;
+  final List<double> colWidths;
+
+  const _${id}({
+    required this.fontSize,
+    required this.headers,
+    required this.data,
+    required this.colWidths,
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final fontSize = MediaQuery.of(context).size.height * widget.fontSizeFactor;
-    final boxSize  = MediaQuery.of(context).size.height * widget.boxSizeFactor * 0.2;
+    final realFontSize = MediaQuery.of(context).size.height * fontSize;
+    final scrollControllerY = ScrollController();
+    final scrollControllerX = ScrollController();
 
-    return GestureDetector(
-      onTap: () => setState(() => checked = !checked),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: boxSize,
-            height: boxSize,
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.black54),
-              borderRadius: BorderRadius.circular(4),
-              color: checked ? Colors.blue : Colors.white,
+    return Scrollbar(
+      controller: scrollControllerY,
+      thumbVisibility: true,
+      child: SingleChildScrollView(
+        controller: scrollControllerY,
+        child: Scrollbar(
+          controller: scrollControllerX,
+          thumbVisibility: true,
+          notificationPredicate: (notif) => notif.depth == 1,
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            controller: scrollControllerX,
+            child: Column(
+              children: [
+                Row(
+                  children: List.generate(headers.length, (i) {
+                    return Container(
+                      padding: const EdgeInsets.all(6),
+                      alignment: Alignment.center,
+                      width: MediaQuery.of(context).size.width * colWidths[i],
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.black26),
+                        color: Color(0xFFE5E7EB),
+                      ),
+                      child: Text(
+                        headers[i],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: realFontSize,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    );
+                  }),
+                ),
+                ...data.map((fila) {
+                  return Row(
+                    children: List.generate(headers.length, (i) {
+                      return Container(
+                        padding: const EdgeInsets.all(6),
+                        alignment: Alignment.center,
+                        width: MediaQuery.of(context).size.width * colWidths[i],
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.black12),
+                        ),
+                        child: Text(
+                          fila[i],
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: realFontSize,
+                          ),
+                        ),
+                      );
+                    }),
+                  );
+                }).toList(),
+              ],
             ),
-            child: checked
-              ? const Icon(Icons.check, size: 16, color: Colors.white)
-              : null,
           ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              '${label}',
-              style: TextStyle(fontSize: fontSize),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 }
   `);
 
+  // Dart-safe serialization
+  const safe = (str) => str.replace(/'/g, "\\'");
+
+  const dartHeaders = `[${headers.map(h => `'${safe(h)}'`).join(',')}]`;
+  const dartData = `[${data.map(row => `[${row.map(c => `'${safe(c)}'`).join(',')}]`).join(',')}]`;
+  const dartColWidths = `[${colWidths.join(',')}]`;
+
   return posWrap(`_${id}(
-    ${fontSize},
-    ${el.height.toFixed(4)}  // ← se usa la altura del bounding box como base del cuadrado
+    fontSize: ${fontSize},
+    headers: ${dartHeaders},
+    data: ${dartData},
+    colWidths: ${dartColWidths},
   )`);
 }
+
+case 'Cuadrado': {
+  const x = el.x || 0;
+  const y = el.y || 0;
+  const width = el.width || 1;  // Usar el tamaño completo del contenedor
+  const height = el.height || 1; // Usar el tamaño completo del contenedor
+  const color = el.props?.color || '#000000';  // Obtener color, si no, usar negro por defecto
+  const id = `Cuadrado${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
+
+  auxWidgets.add(`
+  class _${id} extends StatelessWidget {
+    final double width;
+    final double height;
+    final Color color;
+
+    const _${id}({
+      required this.width,
+      required this.height,
+      required this.color,
+      super.key,
+    });
+
+    @override
+    Widget build(BuildContext context) {
+      return Container(
+        width: width * MediaQuery.of(context).size.width,  // Escala con el tamaño de la pantalla
+        height: height * MediaQuery.of(context).size.height, // Escala con el tamaño de la pantalla
+        decoration: BoxDecoration(
+          color: color,  // Directamente el color ya convertido
+          shape: BoxShape.rectangle,
+        ),
+      );
+    }
+  }
+  `);
+
+  // Serialización segura para Dart
+  const dartColor = color.replace('#', '');  // Quitar '#' para el formato hexadecimal
+  return posWrap(`_${id}(
+    width: ${width},
+    height: ${height},
+    color: Color(0xFF${dartColor}),  // Pasar el color como objeto Color
+  )`);
+}
+
+case 'Circulo': {
+    // Imprimir todo el objeto `el` para ver qué datos tiene
+  console.log(`Datos de el: ${JSON.stringify(el, null, 2)}`);
+
+  // Aquí obtenemos las propiedades del círculo y las pasamos correctamente
+  const x = el.x || 1;  // Siempre 1 para mantener la proporción
+  const y = el.y || 1;  // Siempre 1 para mantener la proporción
+  const width = el.width || 1;  // Siempre 1 para mantener la proporción
+  const height = el.height || 1;  // Siempre 1 para mantener la proporción
+  const color = el.props?.color || '#000000';  // Color hexadecimal
+
+  // Imprimir el valor de color para asegurarte de que está llegando correctamente
+  console.log(`Color asignado para el Circulo (id: ${el.id}): ${color}`);
+  // Aseguramos que solo se añada la clase _Circulo y OvaloPainter una vez
+  if (!ovaloPainterAdded) {
+    auxWidgets.add(`
+      class _Circulo extends StatelessWidget {
+        final double x;
+        final double y;
+        final double width;
+        final double height;
+        final String color;
+
+        const _Circulo({
+          required this.x,
+          required this.y,
+          required this.width,
+          required this.height,
+          required this.color,
+          super.key,
+        });
+
+        @override
+        Widget build(BuildContext context) {
+          return CustomPaint(
+            size: Size(MediaQuery.of(context).size.width, MediaQuery.of(context).size.height),
+            painter: OvaloPainter(x: x, y: y, width: width, height: height, color: color),
+          );
+        }
+      }
+
+      class OvaloPainter extends CustomPainter {
+        final double x;
+        final double y;
+        final double width;
+        final double height;
+        final String color;
+
+        OvaloPainter({
+          required this.x,
+          required this.y,
+          required this.width,
+          required this.height,
+          required this.color,
+        });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint paint = Paint()
+      ..color = Color(int.parse("0xFF${color.replaceAll('#', '')}"))
+      ..style = PaintingStyle.fill;
+
+    // Dibujamos el óvalo en las proporciones proporcionadas
+    canvas.drawOval(
+      Rect.fromLTWH(
+         x,  // Escalado de la posición X
+         y, // Escalado de la posición Y
+        size.width * width,  // Ancho proporcional al tamaño de la pantalla
+        size.height * height, // Alto proporcional al tamaño de la pantalla
+      ),
+      paint,
+    );
+  }
+
+        @override
+        bool shouldRepaint(covariant CustomPainter oldDelegate) {
+          return false;
+        }
+      }
+    `);
+    ovaloPainterAdded = true;
+  }
+
+  // Generamos el widget Positioned para este círculo con el comportamiento esperado
+  return posWrap(`
+    Positioned(
+      left: constraints.maxWidth * ${x.toFixed(4)},  // Multiplicamos por 1 para mantener el comportamiento
+      top: constraints.maxHeight * ${y.toFixed(4)},  // Multiplicamos por 1 para mantener el comportamiento
+      width: constraints.maxWidth * ${width.toFixed(4)},  // Multiplicamos por 1 para mantener el comportamiento
+      height: constraints.maxHeight * ${height.toFixed(4)},  // Multiplicamos por 1 para mantener el comportamiento
+      child: _Circulo(
+        x: 1,  // Mantener 1
+        y: 1,  // Mantener 1
+        width: 1,  // Mantener 1
+        height: 1,  // Mantener 1
+        color: '${color}',  // Color hexadecimal
+      ),
+    )
+  `);
+}
+
+
+
 
           case 'InputBox': {
             const id = `InputBox${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
