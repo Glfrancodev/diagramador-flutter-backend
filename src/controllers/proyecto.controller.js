@@ -278,7 +278,7 @@ async exportarProyectoFlutter(req, res) {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(${el.props.borderRadius}),
                         child: Image.network(
-                          'http://localhost:3000/api/archivos/${el.props.idArchivo}/descargar',
+                           '${process.env.FLUTTER_API_URL}/api/archivos/${el.props.idArchivo}/descargar',
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) => Center(
                             child: Icon(Icons.broken_image, size: 30),
