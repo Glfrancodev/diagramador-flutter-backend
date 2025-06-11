@@ -268,6 +268,40 @@ async exportarProyectoFlutter(req, res) {
                 )
               ),`;
           }
+
+case 'Parrafo': {
+  const leftPx   = `(constraints.maxWidth * ${x.toFixed(4)})`;
+  const topPx    = `(constraints.maxHeight * ${y.toFixed(4)})`;
+  const widthPx  = `(constraints.maxWidth * ${width.toFixed(4)})`;
+  const heightPx = `(constraints.maxHeight * ${height.toFixed(4)})`;
+  const fontSize = `(constraints.maxHeight * ${props.fontSize.toFixed(2) || 0.02})`;
+  const color = `Color(0xFF${(props.color || '#000000').slice(1)})`;
+  const fontWeight = props.bold ? 'FontWeight.bold' : 'FontWeight.normal';
+  const textAlign = `TextAlign.${props.align || 'left'}`;
+  const textoEscapado = `'''${(props.texto || '').replace(/'''/g, "''")}'''`;
+
+  return `
+            Positioned(
+              left: ${leftPx},
+              top: ${topPx},
+              width: ${widthPx},
+              height: ${heightPx},
+              child: Text(
+                ${textoEscapado},
+                softWrap: true,
+                overflow: TextOverflow.visible,
+                maxLines: null,
+                textAlign: ${textAlign},
+                style: TextStyle(
+                  fontSize: ${fontSize},
+                  fontWeight: ${fontWeight},
+                  color: ${color},
+                ),
+              ),
+            ),`;
+}
+
+
           case 'Imagen':
   return `
                     Positioned(
@@ -544,9 +578,12 @@ class _${id} extends StatelessWidget {
 case 'Cuadrado': {
   const x = el.x || 0;
   const y = el.y || 0;
-  const width = el.width || 1;  // Usar el tamaño completo del contenedor
-  const height = el.height || 1; // Usar el tamaño completo del contenedor
-  const color = el.props?.color || '#000000';  // Obtener color, si no, usar negro por defecto
+  const width = el.width || 1;
+  const height = el.height || 1;
+  const color = el.props?.color || '#000000';
+  const borderRadius = el.props?.borderRadius ?? 0;
+  const corners = el.props?.borderCorners || {};
+
   const id = `Cuadrado${el.id.replace(/[^a-zA-Z0-9]/g, '')}`;
 
   auxWidgets.add(`
@@ -565,25 +602,31 @@ case 'Cuadrado': {
     @override
     Widget build(BuildContext context) {
       return Container(
-        width: width * MediaQuery.of(context).size.width,  // Escala con el tamaño de la pantalla
-        height: height * MediaQuery.of(context).size.height, // Escala con el tamaño de la pantalla
+        width: width * MediaQuery.of(context).size.width,
+        height: height * MediaQuery.of(context).size.height,
         decoration: BoxDecoration(
-          color: color,  // Directamente el color ya convertido
-          shape: BoxShape.rectangle,
+          color: color,
+          borderRadius: BorderRadius.only(
+            ${corners.topLeft ? `topLeft: Radius.circular(${borderRadius}),` : ''}
+            ${corners.topRight ? `topRight: Radius.circular(${borderRadius}),` : ''}
+            ${corners.bottomLeft ? `bottomLeft: Radius.circular(${borderRadius}),` : ''}
+            ${corners.bottomRight ? `bottomRight: Radius.circular(${borderRadius}),` : ''}
+          ),
         ),
       );
     }
   }
   `);
 
-  // Serialización segura para Dart
-  const dartColor = color.replace('#', '');  // Quitar '#' para el formato hexadecimal
+  const dartColor = color.replace('#', '');
+
   return posWrap(`_${id}(
     width: ${width},
     height: ${height},
-    color: Color(0xFF${dartColor}),  // Pasar el color como objeto Color
+    color: Color(0xFF${dartColor}),
   )`);
 }
+
 
 case 'Circulo': {
     // Imprimir todo el objeto `el` para ver qué datos tiene
@@ -1462,32 +1505,35 @@ FORMATO DE SALIDA
 
 async generarDesdePrompt(req, res) {
   try {
-    const { descripcion } = req.body;
-    if (!descripcion)
-      return res.status(400).json({ error: 'Falta descripción del proyecto.' });
+    const { titulo, descripcion, prompt } = req.body;
+    if (!titulo || !descripcion || !prompt)
+      return res.status(400).json({ error: 'Faltan campos: título, descripción o prompt.' });
 
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
     // Prompt system
-    const systemPrompt = `Eres un diseñador UI experto, especializado en generar interfaces gráficas responsivas y precisas para aplicaciones móviles, a partir de descripciones textuales de usuarios.
+    const systemPrompt = `Eres un diseñador UI experto, especializado en generar interfaces gráficas responsivas y precisas para aplicaciones móviles, a partir de descripciones textuales de usuarios, recuerda que siempre se debe poder diferenciar bloques de contenido o secciones, no deben existir pestañas vacías, cada pestaña debe tener algo.
 
 Tu tarea es construir una lista detallada de componentes visuales que representen la pantalla solicitada. Cada componente debe contener:
+
+No uses Tabla para nada que no sea un gestor de crud, o para gestor de almacen de compra y venta(solo almacen porque si es un marketplace no debes usar tabla, tampoco para aplicaciones eccomerce), para nada mas. Mensajes o noticias lo puedes representar de otra forma
 
 1. tipo: el tipo exacto de componente.
 2. x, y: coordenadas normalizadas (de 0.0 a 1.0) respecto al canvas.
 3. width, height: tamaño relativo del componente (de 0.0 a 1.0).
 4. zIndex: siempre 0 por defecto, salvo que el usuario mencione superposición.
 5. props: conjunto de propiedades específicas para cada tipo de componente.
-6. fontSize: tamaño de fuente relativo (de 0.0 a 1.0) intenta siempre que no sean muy grandes.
+6. fontSize: tamaño de fuente relativo (de 0.0 a 1.0). Siempre que sean mas de dos palabras coloca el fontsize entre 0.02 y 0.035 para que no salga cortado, si son dos palabras o menos que se entre 0.03 y 0.04.
 7. borderRadius: radio de bordes redondeados (NO SON NORMALIZADOS, si no se especifica, usa 6px).
+8. iconsize: debe ser el mismo que fontSize, si no se especifica, usa 0.0237.
 ---
 
 ⚠️ Usa únicamente los siguientes tipos de componente:
 
 - Label, InputBox, InputFecha, Boton, Link
-- GridTable, Checkbox, Selector
+- Tabla, Checkbox, Selector
 - Sidebar, BottomNavbar
-- Cuadrado, Círculo
+- Cuadrado, Circulo
 - Audio, Imagen, Video
 
 **No inventes componentes no soportados.**
@@ -1499,49 +1545,89 @@ Tu tarea es construir una lista detallada de componentes visuales que represente
 #### 🔹 Label
 - Props: texto, fontSize, color, bold
 - Úsalo para títulos, subtítulos o etiquetas de campos.
+- Label lamentablemente no tiene multilinea así que si quieres que poner multilineas tendras que usar un label por linea
+- NO PONGAS FONTSIZE GRANDES con mucho texto, porque se puede salir del contenedor o cortar líneas, toma en cuenta que los fontsize sí son grandes, por ende colocales valores relativamente bajos porque los dispositivos moviles no son muy grandes.
+
+#### 🔹 Parrafo
+- Props: texto, fontSize, color, bold, align
+- Úsalo para bloques de texto largo, como descripciones, explicaciones o contenido informativo.
+- A diferencia de Label, Parrafo **sí soporta multilinea**, tanto automática como manual con \n.
+- align puede ser "left", "center", "right" o "justify" para alinear el texto según lo necesites.
+- NO PONGAS FONTSIZE GRANDES con mucho texto, porque se puede salir del contenedor o cortar líneas, toma en cuenta que los fontsize sí son grandes, por ende colocales valores relativamente bajos porque los dispositivos moviles no son muy grandes.
+- Si querés un fondo detrás del texto, podés envolver el Parrafo dentro de un componente Cuadrado.
+
 
 #### 🔹 InputBox
 - Props: placeholder, fontSize
 - Úsalo para nombres, correos, textos cortos.
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MAS QUE ESTÉ BIEN UBICADO
 
 #### 🔹 InputFecha
 - Props: placeholder, fontSize
 - Campo para seleccionar una fecha.
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MAS QUE ESTÉ BIEN UBICADO
 
 #### 🔹 Boton
 - Props: texto, color, textColor, borderRadius, fontSize
 - Es un botón interactivo. Siempre requiere un texto.
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MAS QUE ESTÉ BIEN UBICADO
 
 #### 🔹 Link
 - Props: texto, url, fontSize, color
 - Es un enlace. Asegúrate de incluir una URL, aunque sea de ejemplo.
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MAS QUE ESTÉ BIEN UBICADO, QUIERO FONTSIZE PEQUEÑOS PARA LOS LINKS
 
-#### 🔹 GridTable
-- Props: headers, data, colWidths, fontSize, locked
-- Tabla de datos. Usa datos genéricos si no se especifican.
+#### 🔹 Tabla
+- Props: headers, data, colWidths, fontSize
+- Solo utiliza tabla si se está menejando algo como un gestor de crud, o para gestor de almacen de compra y venta, para nada mas.
+- Representa una tabla de datos (tipo grilla).
+- headers es una lista de nombres de columnas. data es una lista de filas, cada fila es una lista de celdas.
+- colWidths debe ser una lista de números proporcionales (entre 0 y 1).
+- Si no se especifican headers o data en el prompt del usuario, inventa algunos genéricos pero coherentes.
+- Ejemplo válido:
+  - headers: ["Nombre", "Correo", "Rol"]
+  - data: [["Juan", "juan@mail.com", "Admin"], ["Ana", "ana@mail.com", "User"]]
+  - colWidths: [0.4, 0.4, 0.2]
+- El número de colWidths debe coincidir con el número de columnas.
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MÁS QUE ESTÉ BIEN UBICADO.
+
 
 #### 🔹 Checkbox
 - Props: texto, fontSize
 - Representa una opción seleccionable.
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MAS QUE ESTÉ BIEN UBICADO,QUIERO FONSIZE PEQUEÑOS PARA LOS CHECKBOX
 
 #### 🔹 Selector
 - Props: options, fontSize
 - Es un menú desplegable. Si no se dan opciones, incluye dos de ejemplo.
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MAS QUE ESTÉ BIEN UBICADO
 
 #### 🔹 Sidebar
 - Props: titulo, items[], visible, fontSize, bgColor, textColor, borderRadius
-- El titulo es el label más importante. Cada item tiene texto y nombrePestana.
+- El titulo es el label más importante. Cada item tiene texto y nombrePestana(a lo que el redireccionamiento hace referencia es al "name" de pestañas, no al "id" de pestañas).
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MAS QUE ESTÉ BIEN UBICADO
 
 #### 🔹 BottomNavbar
 - Props: items[], selectedIndex, fontSize, colorActivo, colorInactivo, fondo, borderRadius, iconSize
-- Cada item tiene label, nombrePestana y icono.
+- Cada item tiene label, nombrePestana y icono, el icono debe ser del mismo tamaño que el fontsize o mas pequeño.
+- Si es que hay multiples pestañas debe estar correctamente enlazada en el bottomnavbar, el componente "items" tiene 3 cosas "label" "nombrePestana"(a lo que el redireccionamiento hace referencia es al "name" de pestañas, no al "id" de pestañas) e ícono.
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MAS QUE ESTÉ BIEN UBICADO
+- Los unicos Iconos permitidos son los siguientes: airplay: Airplay, alertCircle, alertOctagon, alertTriangle,alignCenter, alignJustify, alignLeft, alignRight, anchor, aperture, archive, arrowDownCircle, arrowDownLeft, arrowDownRight, arrowDown, arrowLeftCircle, arrowLeft, arrowRightCircle, arrowRight, arrowUpCircle, arrowUpLeft, arrowUpRight, arrowUp, atSign, award, batteryCharging, batteryFull, batteryLow, batteryMedium, beaker, bellOff, bell, bluetooth, bold, bookOpen, book, bookmark, box, briefcase, calendar, cameraOff, camera, cast, checkCircle, checkSquare, check, chevronDown, chevronLeft, chevronRight, chevronUp, chevronsDown, chevronsLeft, chevronsRight, chevronsUp, chrome, circle, clipboard, clock, cloudDrizzle, cloudLightning, cloudOff, cloudRain, cloudSnow, cloud, code, codepen, codesandbox, coffee, columns, command, compass, copy, cornerDownLeft, cornerDownRight, cornerLeftDown, cornerLeftUp, cornerRightDown, cornerRightUp, cornerUpLeft, cornerUpRight, cpu, creditCard, crop, crosshair, database, delete, disc, dollarSign, downloadCloud, download, edit, externalLink, eyeOff, eye, facebook, fastForward, feather, fileMinus, filePlus, fileText, file, film, filter, flag, folderMinus, folderPlus, folder, framer, gitBranch, gitCommit, gitMerge, gitPullRequest, github, gitlab, globe, grid, hardDrive, hash, headphones, heart, helpCircle, home, image, inbox, instagram, italic, key, layers, layout, lifeBuoy, link2, link, linkedin, list, loader, lock, logIn, logOut, mail, mapPin, map, maximize2, maximize, meh, menu, messageCircle, messageSquare, micOff, mic, minimize2, minimize, minusCircle, minusSquare, minus, monitor, moon, moreHorizontal, moreVertical, mousePointer, move, music, navigation, navigation2, network, octagon, package, paperclip, pauseCircle, pause, playCircle, play, plusCircle, plusSquare, plus, pocket, power, printer, radio, refreshCcw, refreshCw, rewind, rotateCcw, rotateCw, rss, save, scissors, search, send, server, settings, share2, share, shieldOff, shield, shoppingBag, shoppingCart, shuffle, sidebar, skipBack, skipForward, slack, slash, sliders, smartphone, speaker, square, star, stopCircle, sun, sunrise, sunset, tablet, tag, target, terminal, thermometer, thumbsDown, thumbsUp, toggleLeft, toggleRight, trash, trello, trendingDown, trendingUp, triangle, truck, tv, twitter, type, umbrella, unlink, uploadCloud, upload, userCheck, userMinus, userPlus, userX, user, users, videoOff, video, voicemail, volume1, volume2, volumeX, volume, wifiOff, wifi, wind, xCircle, xSquare, x, youtube
 
-#### 🔹 Cuadrado y Círculo
+#### 🔹 Cuadrado
+- Props: color, size, borderRadius, borderCorners
+- Usa Cuadrado para fondos de color plano los colores pasteles siempre son mas esteticos evita que el fondo sea blanco, aunque si son aplicaciones más formales no deberías usar muchos colores.
+- Usa Cuadrado para decorar, por ejemplo como "fondo" de un container, por ejemplo para diferenciar secciones de la pantalla
+- Siempre que uses un Cuadrado que no sea para color de fondo, usa borderCorners para bordes redondeados.
+
+
+#### 🔹 Circulo
 - Props: color, size
-- Usa Cuadrado para fondos de color plano. Usa Círculo para íconos o decoraciones.
+- Usa Circulo para iconos o elementos circulares, el color puede ser el mismo que el del Cuadrado, no lo uses tanto el Circulo, preferible usa cuadrado con bordes redondeados.
 
 #### 🔹 Imagen / Video / Audio
 - Props: idArchivo, nombreArchivo, tipo, borderRadius
+- Para "Logos" puedes usar Imagen ya que el usuario decidirá que foto poner en su logo, pero el componente a usar es Imagen.
 - Usa valores de ejemplo si el usuario no da archivos.
   - tipo debe ser "imagen", "video" o "audio" respectivamente.
 
@@ -1558,8 +1644,8 @@ Aplica diseño profesional siguiendo estos principios:
    - Luego inputs o contenido.
    - Luego botones o acciones.
 4. 🎨 **Consistencia en tamaño:** inputs y botones deben tener alturas similares (height: 0.08 ~ 0.1).
-5. 📱 **Barra inferior (BottomNavbar):** siempre al fondo con y: 0.9, height: 0.1.
-6. 🔲 **Decorativos opcionales:** puedes usar Cuadrado o Círculo con zIndex negativo como fondo si mejora la estética.
+5. 📱 **Navegacion(BottomNavBar o Sidebar):** Siempre deben estar por encima de todo, es decir el zIndex debe ser siempre el mas alto, ademas no importa si el Sidebar se coloca encima de cualquier componente porque el Sidebar se puede minimizar así que no importa.
+6. 🔲 **Decorativos opcionales:** puedes usar Cuadrado o Circulo con zIndex negativo como fondo si mejora la estética.
 7. 👁️ **Evitá desorden:** nunca pongas elementos demasiado juntos ni en esquinas.
 
 El diseño debe verse limpio, equilibrado y alineado como una app profesional real. No agrupes todo en el centro ni uses tamaños exagerados.
@@ -1570,14 +1656,16 @@ El diseño debe verse limpio, equilibrado y alineado como una app profesional re
 ### 🧠 Interpretación del prompt del usuario
 
 - Si el prompt es ambiguo, asumí los valores por defecto más comunes.
-- Si el usuario menciona “pantalla de login”, incluí: Label, InputBox, InputBox, Boton.
-- Si menciona pestañas o navegación inferior, incluí BottomNavbar.
-- Si dice “lista de usuarios”, usá GridTable.
+- Si el usuario menciona “pantalla de login”, incluí: Label, InputBox, InputBox, Boton y si es necesario Checkbox.
+- Si menciona pestañas o navegación inferior, incluí BottomNavbar o Sidebar, nunca ambas en la misma pestaña.
+- Si dice “lista de usuarios”, usá Tabla.
+- Si el prompt es muy vago tienes libertad absoluta y permiso para copiar interfaces de otras apps populares, pero siempre con un toque único y moderno, ya sea Whatsapp, Facebook, TikTok, Instagram, Paginas de noticias, etc.
 
 ---
 
 ### ⛔️ Errores a evitar
 
+- Que no haya solapamiento entre componentes, los unicos que pueden solaparse son los decorativos con cualquier otro es decir solo "Cuadrado y Circulo" pueden solpar a cualquier otro componente y el Sidebar ya que se puede minimizar.
 - No mezcles props entre tipos. Ej: no pongas url en un Boton.
 - No generes props vacíos ni faltantes si son requeridos.
 - No agregues texto explicativo fuera del JSON.
@@ -1585,8 +1673,9 @@ El diseño debe verse limpio, equilibrado y alineado como una app profesional re
 
 ---
 🎨 Diseña como si fueras un diseñador experto en Material Design. La interfaz debe parecer moderna, clara y profesional, similar a una app de Google, recuerda que los bordes redondeados siempre serán mas esteticos que los rectos.
+Si el usuario menciona múltiples pantallas, se deben generar múltiples pestañas, cada una con su propio id, name y elementos, ademas si es que hay multiples pestañas debe haber una forma de navegar entre ellas, ya debe estar correctamente enlazada, ya sea a traves de sidebar o de bottomnavbar, a lo que el redireccionamiento hace referencia es al "name" de pestañas, no al "id" de pestañas
 
-Tu única salida válida es una **llamada a la función generar_ui, con una lista de elementos compatibles con el esquema declarado.
+Tu única salida válida es una **llamada a la función generar_ui**, con una lista de **pestañas**, y dentro de cada una, sus propios elementos compatibles con el esquema declarado.
 `;
 
     const completion = await openai.chat.completions.create({
@@ -1597,35 +1686,51 @@ Tu única salida válida es una **llamada a la función generar_ui, con una list
       }],
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: descripcion }
+        { role: 'user', content: prompt }
       ]
     });
 
     const toolCall = completion.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall) return res.status(400).json({ error: 'No se generó ninguna interfaz.' });
 
-    const { elementos } = JSON.parse(toolCall.function.arguments);
+    const { pestañas } = JSON.parse(toolCall.function.arguments);
+if (!pestañas?.length)
+  return res.status(400).json({ error: 'No se generaron pestañas válidas.' });
+
     // Asegurar que cada elemento tenga un ID único
-    const elementosConIds = elementos.map(el => ({
-      id: uuidv4(),
-      ...el
-    }));
-
-    if (!elementos?.length)
-      return res.status(400).json({ error: 'No se generaron componentes válidos.' });
-
-    const proyecto = await proyectoService.crear({
-      nombre: 'Proyecto generado por prompt',
-      dispositivo: 'phoneStandard',
-      idUsuario: req.usuario.idUsuario,
-      contenido: JSON.stringify({
-        dispositivo: 'phoneStandard',
-        pestañas: [{ id: 'tab1', name: 'Pantalla 1', elementos: elementosConIds }],
-        clases: [],
-        relaciones: [],
-        clavesPrimarias: {}
+const pestañasConIds = pestañas.map(p => ({
+  ...p,
+  id: p.id || uuidv4(),
+  elementos: Array.isArray(p.elementos)
+    ? p.elementos.map(el => {
+        const isCuadrado = el.tipo === 'Cuadrado';
+        if (isCuadrado) {
+          el.props.borderCorners ??= {
+            topLeft: true,
+            topRight: true,
+            bottomLeft: true,
+            bottomRight: true,
+          };
+        }
+        return { id: uuidv4(), ...el };
       })
-    });
+    : [] // ← fallback a arreglo vacío si no vino "elementos"
+}));
+
+
+const proyecto = await proyectoService.crear({
+  nombre: titulo,
+  descripcion: descripcion,
+  dispositivo: 'phoneStandard',
+  idUsuario: req.usuario.idUsuario,
+  contenido: JSON.stringify({
+    dispositivo: 'phoneStandard',
+    pestañas: pestañasConIds,
+    clases: [],
+    relaciones: [],
+    clavesPrimarias: {}
+  })
+});
 
     res.status(200).json(proyecto);
   } catch (err) {

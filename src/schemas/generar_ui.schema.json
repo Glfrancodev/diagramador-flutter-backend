@@ -1,135 +1,227 @@
 {
   "name": "generar_ui",
-  "description": "Genera una lista de componentes visuales con posiciones, tamaños y propiedades completas desde un prompt textual.",
+  "description": "Genera una lista de pestañas, cada una con componentes visuales con posiciones, tamaños y propiedades completas desde un prompt textual.",
   "parameters": {
     "type": "object",
     "properties": {
-      "elementos": {
+      "pestañas": {
         "type": "array",
         "items": {
           "type": "object",
           "properties": {
-            "tipo": {
-              "type": "string",
-              "enum": [
-                "Label", "InputBox", "InputFecha", "Boton", "Link",
-                "GridTable", "Checkbox", "Selector", "Sidebar", "BottomNavbar",
-                "Cuadrado", "Círculo", "Audio", "Imagen", "Video"
-              ]
-            },
-            "x": { "type": "number" },
-            "y": { "type": "number" },
-            "width": { "type": "number" },
-            "height": { "type": "number" },
-            "zIndex": { "type": "number" },
-            "props": {
-              "oneOf": [
-                { "type": "object", "properties": {
-                    "texto": { "type": "string" },
-                    "fontSize": { "type": "number" },
-                    "color": { "type": "string" },
-                    "bold": { "type": "boolean" }
-                  }, "required": ["texto"] },
-
-                { "type": "object", "properties": {
-                    "placeholder": { "type": "string" },
-                    "fontSize": { "type": "number" }
-                  }, "required": ["placeholder"] },
-
-                { "type": "object", "properties": {
-                    "texto": { "type": "string" },
-                    "color": { "type": "string" },
-                    "textColor": { "type": "string" },
-                    "borderRadius": { "type": "number" },
-                    "fontSize": { "type": "number" }
-                  }, "required": ["texto"] },
-
-                { "type": "object", "properties": {
-                    "texto": { "type": "string" },
-                    "url": { "type": "string" },
-                    "fontSize": { "type": "number" },
-                    "color": { "type": "string" }
-                  }, "required": ["texto", "url"] },
-
-                { "type": "object", "properties": {
-                    "headers": { "type": "array", "items": { "type": "string" } },
-                    "data": {
-                      "type": "array",
-                      "items": { "type": "array", "items": { "type": "string" } }
-                    },
-                    "colWidths": { "type": "array", "items": { "type": "number" } },
-                    "fontSize": { "type": "number" },
-                    "locked": { "type": "boolean" }
-                  }, "required": ["headers", "data"] },
-
-                { "type": "object", "properties": {
-                    "texto": { "type": "string" },
-                    "fontSize": { "type": "number" }
-                  }, "required": ["texto"] },
-
-                { "type": "object", "properties": {
-                    "options": { "type": "array", "items": { "type": "string" } },
-                    "fontSize": { "type": "number" }
-                  }, "required": ["options"] },
-
-                { "type": "object", "properties": {
-                    "titulo": { "type": "string" },
-                    "items": {
-                      "type": "array",
-                      "items": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "elementos": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "tipo": {
+                    "type": "string",
+                    "enum": [
+                      "Label", "Parrafo", "InputBox", "InputFecha", "Boton", "Link",
+                      "Tabla", "Checkbox", "Selector", "Sidebar", "BottomNavbar",
+                      "Cuadrado", "Circulo", "Audio", "Imagen", "Video"
+                    ]
+                  },
+                  "x": { "type": "number" },
+                  "y": { "type": "number" },
+                  "width": { "type": "number" },
+                  "height": { "type": "number" },
+                  "zIndex": { "type": "number" },
+                  "props": {
+                    "oneOf": [
+                      {
                         "type": "object",
                         "properties": {
                           "texto": { "type": "string" },
-                          "nombrePestana": { "type": "string" }
-                        }, "required": ["texto", "nombrePestana"]
-                      }
-                    },
-                    "visible": { "type": "boolean" },
-                    "fontSize": { "type": "number" },
-                    "bgColor": { "type": "string" },
-                    "textColor": { "type": "string" },
-                    "borderRadius": { "type": "number" }
-                  }, "required": ["titulo", "items"] },
-
-                { "type": "object", "properties": {
-                    "items": {
-                      "type": "array",
-                      "items": {
+                          "fontSize": { "type": "number" },
+                          "color": { "type": "string" },
+                          "bold": { "type": "boolean" },
+                          "align": {
+                            "type": "string",
+                            "enum": ["left", "center", "right", "justify"]
+                          }
+                        },
+                        "required": ["texto"]
+                      },
+                      {
                         "type": "object",
                         "properties": {
-                          "label": { "type": "string" },
-                          "nombrePestana": { "type": "string" },
-                          "icono": { "type": "string" }
-                        }, "required": ["label", "nombrePestana", "icono"]
+                          "texto": { "type": "string" },
+                          "fontSize": { "type": "number" },
+                          "color": { "type": "string" },
+                          "bold": { "type": "boolean" }
+                        },
+                        "required": ["texto"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "placeholder": { "type": "string" },
+                          "fontSize": { "type": "number" }
+                        },
+                        "required": ["placeholder"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "texto": { "type": "string" },
+                          "color": { "type": "string" },
+                          "textColor": { "type": "string" },
+                          "borderRadius": { "type": "number" },
+                          "fontSize": { "type": "number" }
+                        },
+                        "required": ["texto"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "texto": { "type": "string" },
+                          "url": { "type": "string" },
+                          "fontSize": { "type": "number" },
+                          "color": { "type": "string" }
+                        },
+                        "required": ["texto", "url"]
+                      },
+                      {
+  "type": "object",
+  "properties": {
+    "headers": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    },
+    "colWidths": {
+      "type": "array",
+      "items": { "type": "number" }
+    },
+    "fontSize": { "type": "number" },
+    "locked": { "type": "boolean" }
+  },
+  "required": ["headers", "data", "colWidths"]
+},
+                      {
+                        "type": "object",
+                        "properties": {
+                          "texto": { "type": "string" },
+                          "fontSize": { "type": "number" }
+                        },
+                        "required": ["texto"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "options": {
+                            "type": "array",
+                            "items": { "type": "string" }
+                          },
+                          "fontSize": { "type": "number" }
+                        },
+                        "required": ["options"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "titulo": { "type": "string" },
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "texto": { "type": "string" },
+                                "nombrePestana": { "type": "string" }
+                              },
+                              "required": ["texto", "nombrePestana"]
+                            }
+                          },
+                          "visible": { "type": "boolean" },
+                          "fontSize": { "type": "number" },
+                          "bgColor": { "type": "string" },
+                          "textColor": { "type": "string" },
+                          "borderRadius": { "type": "number" }
+                        },
+                        "required": ["titulo", "items"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "items": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "label": { "type": "string" },
+                                "nombrePestana": { "type": "string" },
+                                "icono": { "type": "string" }
+                              },
+                              "required": ["label", "nombrePestana", "icono"]
+                            }
+                          },
+                          "selectedIndex": { "type": "number" },
+                          "fontSize": { "type": "number" },
+                          "colorActivo": { "type": "string" },
+                          "colorInactivo": { "type": "string" },
+                          "fondo": { "type": "string" },
+                          "borderRadius": { "type": "number" },
+                          "iconSize": { "type": "number" }
+                        },
+                        "required": ["items", "selectedIndex"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "color": { "type": "string" },
+                          "size": { "type": "number" },
+                          "borderRadius": { "type": "number" },
+                          "borderCorners": {
+                            "type": "object",
+                            "properties": {
+                              "topLeft": { "type": "boolean" },
+                              "topRight": { "type": "boolean" },
+                              "bottomLeft": { "type": "boolean" },
+                              "bottomRight": { "type": "boolean" }
+                            },
+                            "required": ["topLeft", "topRight", "bottomLeft", "bottomRight"]
+                          }
+                        },
+                        "required": ["color"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "color": { "type": "string" },
+                          "size": { "type": "number" }
+                        },
+                        "required": ["color"]
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "idArchivo": { "type": "string" },
+                          "nombreArchivo": { "type": "string" },
+                          "tipo": { "type": "string" },
+                          "borderRadius": { "type": "number" }
+                        },
+                        "required": ["idArchivo", "nombreArchivo", "tipo"]
                       }
-                    },
-                    "selectedIndex": { "type": "number" },
-                    "fontSize": { "type": "number" },
-                    "colorActivo": { "type": "string" },
-                    "colorInactivo": { "type": "string" },
-                    "fondo": { "type": "string" },
-                    "borderRadius": { "type": "number" },
-                    "iconSize": { "type": "number" }
-                  }, "required": ["items", "selectedIndex"] },
-
-                { "type": "object", "properties": {
-                    "color": { "type": "string" },
-                    "size": { "type": "number" }
-                  }, "required": ["color"] },
-
-                { "type": "object", "properties": {
-                    "idArchivo": { "type": "string" },
-                    "nombreArchivo": { "type": "string" },
-                    "tipo": { "type": "string" },
-                    "borderRadius": { "type": "number" }
-                  }, "required": ["idArchivo", "nombreArchivo", "tipo"] }
-              ]
+                    ]
+                  }
+                },
+                "required": ["tipo", "x", "y", "width", "height", "zIndex", "props"]
+              }
             }
           },
-          "required": ["tipo", "x", "y", "width", "height", "zIndex", "props"]
+          "required": ["id", "name", "elementos"]
         }
       }
     },
-    "required": ["elementos"]
+    "required": ["pestañas"]
   }
 }
