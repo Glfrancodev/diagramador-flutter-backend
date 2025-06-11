@@ -209,15 +209,17 @@ async exportarProyectoFlutter(req, res) {
     await fs.mkdir(screensDir, { recursive: true });
 
     /* ---------- Aux ---------- */
-    const normalizarNombre = (nombre) => {
-      const limpio = nombre.trim().replace(/\s+/g, ' ');
-      const camel  = limpio.replace(/(^\w|\s\w)/g, (m) => m.toUpperCase()).replace(/\s/g, '');
-      return {
-        clase: `Pantalla${camel}`,
-        file : `pantalla_${limpio.toLowerCase().replace(/\s+/g, '')}.dart`,
-        ruta : `/${camel}`,
-      };
-    };
+const normalizarNombre = (nombre) => {
+  const limpio = nombre.trim().replace(/\s+/g, ' ');
+  const camel  = limpio.replace(/(^\w|\s\w)/g, (m) => m.toUpperCase()).replace(/\s/g, '');
+  const file   = `pantalla_${limpio.toLowerCase().replace(/\s+/g, '')}.dart`;
+  return {
+    clase: `Pantalla${camel}`,
+    file,
+    ruta: `/${limpio.toLowerCase().replace(/\s+/g, '')}`, // ← corregido
+  };
+};
+
 
     /* =======================================================
        ==========   GENERACIÓN DE CADA PANTALLA   ============
