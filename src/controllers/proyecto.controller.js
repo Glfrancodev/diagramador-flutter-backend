@@ -1457,6 +1457,187 @@ FORMATO DE SALIDA
     res.status(500).json({ error: 'Error interno al analizar el boceto.' });
   }
 }
+
+
+
+async generarDesdePrompt(req, res) {
+  try {
+    const { descripcion } = req.body;
+    if (!descripcion)
+      return res.status(400).json({ error: 'Falta descripción del proyecto.' });
+
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    // Prompt system
+    const systemPrompt = `Eres un diseñador UI experto, especializado en generar interfaces gráficas responsivas y precisas para aplicaciones móviles, a partir de descripciones textuales de usuarios.
+
+Tu tarea es construir una lista detallada de componentes visuales que representen la pantalla solicitada. Cada componente debe contener:
+
+1. tipo: el tipo exacto de componente.
+2. x, y: coordenadas normalizadas (de 0.0 a 1.0) respecto al canvas.
+3. width, height: tamaño relativo del componente (de 0.0 a 1.0).
+4. zIndex: siempre 0 por defecto, salvo que el usuario mencione superposición.
+5. props: conjunto de propiedades específicas para cada tipo de componente.
+6. fontSize: tamaño de fuente relativo (de 0.0 a 1.0) intenta siempre que no sean muy grandes.
+7. borderRadius: radio de bordes redondeados (NO SON NORMALIZADOS, si no se especifica, usa 6px).
+---
+
+⚠️ Usa únicamente los siguientes tipos de componente:
+
+- Label, InputBox, InputFecha, Boton, Link
+- GridTable, Checkbox, Selector
+- Sidebar, BottomNavbar
+- Cuadrado, Círculo
+- Audio, Imagen, Video
+
+**No inventes componentes no soportados.**
+
+---
+
+### 🎨 Especificación de cada componente:
+
+#### 🔹 Label
+- Props: texto, fontSize, color, bold
+- Úsalo para títulos, subtítulos o etiquetas de campos.
+
+#### 🔹 InputBox
+- Props: placeholder, fontSize
+- Úsalo para nombres, correos, textos cortos.
+
+#### 🔹 InputFecha
+- Props: placeholder, fontSize
+- Campo para seleccionar una fecha.
+
+#### 🔹 Boton
+- Props: texto, color, textColor, borderRadius, fontSize
+- Es un botón interactivo. Siempre requiere un texto.
+
+#### 🔹 Link
+- Props: texto, url, fontSize, color
+- Es un enlace. Asegúrate de incluir una URL, aunque sea de ejemplo.
+
+#### 🔹 GridTable
+- Props: headers, data, colWidths, fontSize, locked
+- Tabla de datos. Usa datos genéricos si no se especifican.
+
+#### 🔹 Checkbox
+- Props: texto, fontSize
+- Representa una opción seleccionable.
+
+#### 🔹 Selector
+- Props: options, fontSize
+- Es un menú desplegable. Si no se dan opciones, incluye dos de ejemplo.
+
+#### 🔹 Sidebar
+- Props: titulo, items[], visible, fontSize, bgColor, textColor, borderRadius
+- El titulo es el label más importante. Cada item tiene texto y nombrePestana.
+
+#### 🔹 BottomNavbar
+- Props: items[], selectedIndex, fontSize, colorActivo, colorInactivo, fondo, borderRadius, iconSize
+- Cada item tiene label, nombrePestana y icono.
+
+#### 🔹 Cuadrado y Círculo
+- Props: color, size
+- Usa Cuadrado para fondos de color plano. Usa Círculo para íconos o decoraciones.
+
+#### 🔹 Imagen / Video / Audio
+- Props: idArchivo, nombreArchivo, tipo, borderRadius
+- Usa valores de ejemplo si el usuario no da archivos.
+  - tipo debe ser "imagen", "video" o "audio" respectivamente.
+
+---
+
+### 📏 Principios de distribución y estética visual
+
+Aplica diseño profesional siguiendo estos principios:
+
+1. 🧱 **Espaciado vertical uniforme:** deja al menos 5% de separación entre elementos verticalmente.
+2. 🎯 **Alineación horizontal lógica:** los inputs y botones deben alinearse con el mismo margen horizontal (por ejemplo, x: 0.1, width: 0.8).
+3. 🧑‍🎨 **Jerarquía visual:** 
+   - Usa Label grande y en bold al inicio como título.
+   - Luego inputs o contenido.
+   - Luego botones o acciones.
+4. 🎨 **Consistencia en tamaño:** inputs y botones deben tener alturas similares (height: 0.08 ~ 0.1).
+5. 📱 **Barra inferior (BottomNavbar):** siempre al fondo con y: 0.9, height: 0.1.
+6. 🔲 **Decorativos opcionales:** puedes usar Cuadrado o Círculo con zIndex negativo como fondo si mejora la estética.
+7. 👁️ **Evitá desorden:** nunca pongas elementos demasiado juntos ni en esquinas.
+
+El diseño debe verse limpio, equilibrado y alineado como una app profesional real. No agrupes todo en el centro ni uses tamaños exagerados.
+
+
+---
+
+### 🧠 Interpretación del prompt del usuario
+
+- Si el prompt es ambiguo, asumí los valores por defecto más comunes.
+- Si el usuario menciona “pantalla de login”, incluí: Label, InputBox, InputBox, Boton.
+- Si menciona pestañas o navegación inferior, incluí BottomNavbar.
+- Si dice “lista de usuarios”, usá GridTable.
+
+---
+
+### ⛔️ Errores a evitar
+
+- No mezcles props entre tipos. Ej: no pongas url en un Boton.
+- No generes props vacíos ni faltantes si son requeridos.
+- No agregues texto explicativo fuera del JSON.
+- No devuelvas ningún texto fuera del llamado a generar_ui.
+
+---
+🎨 Diseña como si fueras un diseñador experto en Material Design. La interfaz debe parecer moderna, clara y profesional, similar a una app de Google, recuerda que los bordes redondeados siempre serán mas esteticos que los rectos.
+
+Tu única salida válida es una **llamada a la función generar_ui, con una lista de elementos compatibles con el esquema declarado.
+`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'o3',
+      tools: [{
+        type: 'function',
+        function: require('../schemas/generar_ui.schema.json')
+      }],
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: descripcion }
+      ]
+    });
+
+    const toolCall = completion.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall) return res.status(400).json({ error: 'No se generó ninguna interfaz.' });
+
+    const { elementos } = JSON.parse(toolCall.function.arguments);
+    // Asegurar que cada elemento tenga un ID único
+    const elementosConIds = elementos.map(el => ({
+      id: uuidv4(),
+      ...el
+    }));
+
+    if (!elementos?.length)
+      return res.status(400).json({ error: 'No se generaron componentes válidos.' });
+
+    const proyecto = await proyectoService.crear({
+      nombre: 'Proyecto generado por prompt',
+      dispositivo: 'phoneStandard',
+      idUsuario: req.usuario.idUsuario,
+      contenido: JSON.stringify({
+        dispositivo: 'phoneStandard',
+        pestañas: [{ id: 'tab1', name: 'Pantalla 1', elementos: elementosConIds }],
+        clases: [],
+        relaciones: [],
+        clavesPrimarias: {}
+      })
+    });
+
+    res.status(200).json(proyecto);
+  } catch (err) {
+    console.error('[generarDesdePrompt] Error crítico:', err?.response?.data || err.message);
+    res.status(500).json({ error: 'Error al generar proyecto desde descripción textual.' });
+  }
+}
+
+
+
+
+
 }
       
 module.exports = new ProyectoController();

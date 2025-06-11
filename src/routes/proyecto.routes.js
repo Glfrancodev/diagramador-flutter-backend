@@ -19,5 +19,6 @@ router.delete('/:id', verificarToken, proyectoController.eliminar);
 
 // ✅ NUEVA RUTA: Importar desde imagen de boceto
 router.post('/importar-boceto', verificarToken, upload.single('imagen'), proyectoController.importarBoceto);
+router.post('/generar-desde-prompt', verificarToken, proyectoController.generarDesdePrompt);
 
 module.exports = router;
