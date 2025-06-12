@@ -1312,9 +1312,205 @@ class MyApp extends StatelessWidget {
 
 
 
+// async importarBoceto(req, res) {
+//   try {
+//     /* ─── 0. Validaciones ─── */
+//     if (!req.file)
+//       return res.status(400).json({ error: 'No se recibió ninguna imagen.' });
+
+//     const ext = path.extname(req.file.originalname).toLowerCase();
+//     if (!['.png', '.jpg', '.jpeg'].includes(ext))
+//       return res.status(400).json({ error: 'Formato no válido. Solo PNG o JPG.' });
+
+//     /* ─── 1. Imagen → base64 ─── */
+//     const rutaImg = req.file.path;
+//     const buffer  = await fs.readFile(rutaImg);
+//     const { width: W, height: H } = sizeOf(buffer);
+//     const base64URL =
+//       `data:image/${ext.replace('.', '')};base64,${buffer.toString('base64')}`;
+
+//     /* ─── 2. Prompt ─── */
+// const prompt = `
+// Eres un analista experto en mockups de interfaces, es decir, necesito que sepas describir de manera exacta y fiel el contenido de la imagen que te voy a mandar haciendo que tu respuesta sea completamente fiel al boceto de imagen.
+
+// INSTRUCCIONES GENERALES
+// • Usa TODO el marco de la imagen como canvas (sin márgenes).
+// • Devuelve CADA componente visible (Label, InputBox, InputFecha, Boton, Sidebar, etc.).
+// • Las coordenadas bb.x, bb.y, bb.w, bb.h deben estar en **píxeles absolutos**
+//   respecto al tamaño real de la imagen (${W}px × ${H}px).
+// • Si un Selector está desplegado (con varias opciones visibles), incluye esas opciones en props.options[].
+// • Si sólo una opción es visible incluye esa opción en props.options[].
+// SIDEBARS
+// • Si un Label cae completamente DENTRO del rectángulo del Sidebar:
+//   - El Label más alto será props.titulo.
+//   - El resto irán en props.items[].
+// • No devuelvas esos Label como elementos sueltos fuera del Sidebar.
+// SELECTOR DESPLEGADO
+// • Si detectas una caja con una opción visible y debajo aparecen una o más líneas de texto alineadas verticalmente, dentro de rectángulos del mismo ancho:
+//   - Interprétalo como un Selector desplegado.
+//   - Usa la opción visible como props.texto
+//   - Incluye TODAS las opciones visibles, incluyendo la seleccionada, en props.options[].
+//   - Usa las opciones listadas debajo como props.options[]
+// • No trates esas opciones como tabla ni como input.
+
+// FORMATO DE SALIDA
+// • Llama únicamente a la función detect_ui con el JSON correspondiente.
+// • No añadas ningún texto adicional fuera del JSON.
+// `;
+
+//     /* ─── 3. Llamada a OpenAI (reintento) ─── */
+//     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+//     let toolCall;
+//     for (let i = 0; i < 2; i++) {
+//       const completion = await openai.chat.completions.create({
+//         model: 'o3',
+//         tools: [{ type: 'function', function: DETECTOR_SCHEMA }],
+//         messages: [
+//           { role: 'system', content: 'Eres un analista experto en wireframes.' },
+//           { role: 'user', content: [
+//               { type: 'text', text: prompt },
+//               { type: 'image_url', image_url: { url: base64URL } }
+//           ] }
+//         ],
+//         max_completion_tokens: 2048
+//       });
+//       toolCall = completion.choices?.[0]?.message?.tool_calls?.[0];
+//       if (toolCall) break;
+//     }
+//     if (!toolCall)
+//       return res.status(400).json({ error: 'No se pudo interpretar el boceto.' });
+
+//     /* ─── 4. Parseo bruto ─── */
+//     let { boxes } = JSON.parse(toolCall.function.arguments);
+//     if (!boxes?.length)
+//       return res.status(400).json({ error: 'No se detectaron componentes.' });
+
+//     /* ─── 5. Post-proceso de Sidebar ─── */
+//     for (const sb of boxes.filter(b => b.tipo === 'Sidebar')) {
+//       const sx = sb.bb.x, sy = sb.bb.y,
+//             sx2 = sx + sb.bb.w, sy2 = sy + sb.bb.h;
+
+//       const internos = boxes.filter(b =>
+//         b.tipo === 'Label' &&
+//         b.bb.x >= sx && (b.bb.x + b.bb.w) <= sx2 &&
+//         b.bb.y >= sy && (b.bb.y + b.bb.h) <= sy2
+//       );
+
+//       if (internos.length) {
+//         internos.sort((a, b) => a.bb.y - b.bb.y);
+//         const tituloLbl = internos.shift();
+//         sb.titulo = tituloLbl.texto.trim();
+//         sb.items  = internos.map(l => ({ texto: l.texto.trim() }));
+//         // eliminar labels absorbidos
+//         boxes = boxes.filter(b => !internos.includes(b) && b !== tituloLbl);
+//       } else if (sb.texto) {
+//         // Fallback: usar texto del propio objeto Sidebar
+//         sb.titulo = sb.texto.trim();
+//       }
+//     }
+
+//     /* ─── 6. Boxes → elementos canvas ─── */
+//     const elementos = boxes.map(b => {
+//       const x = +(b.bb.x / W).toFixed(6);
+//       const y = +(b.bb.y / H).toFixed(6);
+//       const width  = +(b.bb.w / W).toFixed(6);
+//       const height = +(b.bb.h / H).toFixed(6);
+
+//       const base = {
+//         id: uuidv4(),
+//         tipo: b.tipo,
+//         x, y, width, height,
+//         props: { fontSize: estimateFontSize(b.bb.h) }
+
+//       };
+
+//       switch (b.tipo) {
+//         case 'Label':
+//           Object.assign(base.props, { texto: b.texto || '', color: '#000000', bold: false });
+//           break;
+//         case 'InputBox':
+//         case 'InputFecha':
+//           base.props.placeholder = b.texto || '';
+//           break;
+//         case 'Boton':
+//           Object.assign(base.props, {
+//             texto: b.texto || 'Botón',
+//             color: '#007bff',
+//             textColor: '#ffffff',
+//             borderRadius: 4
+//           });
+//           break;
+//         case 'Checkbox':
+//           base.props.texto = b.texto || 'Opción';
+//           break;
+//         case 'Selector':
+//           base.props.options = b.options || ['Opción 1', 'Opción 2'];
+//           break;
+//         case 'Tabla':
+//           Object.assign(base.props, {
+//             headers: b.headers || [],
+//             data: b.filas || [],
+//             colWidths: (b.headers || []).map(() => 100)
+//           });
+//           break;
+//         case 'Link':
+//           Object.assign(base.props, {
+//             texto: b.texto || 'Ir',
+//             url: b.url || 'https://ejemplo.com',
+//             color: '#2563eb'
+//           });
+//           break;
+//         case 'Sidebar':
+//           Object.assign(base.props, {
+//             titulo : b.titulo || '(SIN_TÍTULO)',
+//             items  : (b.items || []).map(it => ({
+//               texto: it.texto,
+//               nombrePestana: 'Pantalla 1'
+//             })),
+//             visible: true
+//           });
+//           break;
+//       }
+//       return base;
+//     });
+//     // Guardar automáticamente al detectar boceto
+//     await proyectoService.crear({
+//       nombre: 'Nuevo proyecto desde boceto',
+//       dispositivo: 'phoneStandard',
+//       idUsuario: req.usuario.idUsuario,
+//       contenido: JSON.stringify({
+//         dispositivo: 'phoneStandard',
+//         pestañas: [{ id: 'tab1', name: 'Pantalla 1', elementos }],
+//         clases: [],
+//         relaciones: [],
+//         clavesPrimarias: {}
+//       })
+//     });
+
+//     /* ─── 7. Respuesta ─── */
+//     res.status(200).json({
+//       dispositivo: 'phoneStandard',
+//       pestañas: [{ id: 'tab1', name: 'Pantalla 1', elementos }],
+//       clases: [],
+//       relaciones: [],
+//       clavesPrimarias: {},
+//       raw: toolCall.function.arguments
+//     });
+
+//   } catch (err) {
+//     console.error('[importarBoceto] Error crítico:', err?.response?.data || err.message);
+//     res.status(500).json({ error: 'Error interno al analizar el boceto.' });
+//   }
+// }
+
+
 async importarBoceto(req, res) {
   try {
-    /* ─── 0. Validaciones ─── */
+    const { nombre, descripcion } = req.body;
+    if (!nombre || !descripcion)
+      return res.status(400).json({ error: 'Faltan el nombre o la descripción del proyecto.' });
+
+    /* ─── 0. Validación ─── */
     if (!req.file)
       return res.status(400).json({ error: 'No se recibió ninguna imagen.' });
 
@@ -1322,186 +1518,258 @@ async importarBoceto(req, res) {
     if (!['.png', '.jpg', '.jpeg'].includes(ext))
       return res.status(400).json({ error: 'Formato no válido. Solo PNG o JPG.' });
 
-    /* ─── 1. Imagen → base64 ─── */
+    /* ─── 1. Convertir imagen a base64 ─── */
     const rutaImg = req.file.path;
-    const buffer  = await fs.readFile(rutaImg);
+    const buffer = await fs.readFile(rutaImg);
     const { width: W, height: H } = sizeOf(buffer);
-    const base64URL =
-      `data:image/${ext.replace('.', '')};base64,${buffer.toString('base64')}`;
+    const base64 = buffer.toString('base64');
+    const base64URL = `data:image/${ext.replace('.', '')};base64,${base64}`;
 
-    /* ─── 2. Prompt ─── */
-const prompt = `
-Eres un analista experto en mockups de interfaces, es decir, necesito que sepas describir de manera exacta y fiel el contenido de la imagen que te voy a mandar haciendo que tu respuesta sea completamente fiel al boceto de imagen.
+    /* ─── 2. Prompt corto de prueba ─── */
+    const prompt = `Eres un diseñador UI experto en interfaces móviles. Recibirás una imagen de un boceto perfectamente recortado (sin márgenes ni bordes). Tu tarea es *reconstruir exactamente* todos los componentes visuales como una estructura JSON válida que represente la UI detectada, quiero que detecteslas ubicaciones reales y las normalices siempre, ya que debería verse bien en cualquier dispositivo.
+Si hay Sidebar pon su zIndex en 100 para que esté por encima de todos los demás componentes.
+JAMAS mezclez un label con un inputbox, si en el boceto el usuario pone un label y debajo un inputbox o a un lado, debes devolverlos como dos componentes distintos, no los mezcles en uno solo.
+Si ves algo parecido a un botón pero al final del lienzo verticalmente hablando tomalo como un BottomNavbar, no como botón
+---
 
-INSTRUCCIONES GENERALES
-• Usa TODO el marco de la imagen como canvas (sin márgenes).
-• Devuelve CADA componente visible (Label, InputBox, InputFecha, Boton, Sidebar, etc.).
-• Las coordenadas bb.x, bb.y, bb.w, bb.h deben estar en **píxeles absolutos**
-  respecto al tamaño real de la imagen (${W}px × ${H}px).
-• Si un Selector está desplegado (con varias opciones visibles), incluye esas opciones en props.options[].
-• Si sólo una opción es visible incluye esa opción en props.options[].
-SIDEBARS
-• Si un Label cae completamente DENTRO del rectángulo del Sidebar:
-  - El Label más alto será props.titulo.
-  - El resto irán en props.items[].
-• No devuelvas esos Label como elementos sueltos fuera del Sidebar.
-SELECTOR DESPLEGADO
-• Si detectas una caja con una opción visible y debajo aparecen una o más líneas de texto alineadas verticalmente, dentro de rectángulos del mismo ancho:
-  - Interprétalo como un Selector desplegado.
-  - Usa la opción visible como props.texto
-  - Incluye TODAS las opciones visibles, incluyendo la seleccionada, en props.options[].
-  - Usa las opciones listadas debajo como props.options[]
-• No trates esas opciones como tabla ni como input.
+📌 INSTRUCCIONES GENERALES:
 
-FORMATO DE SALIDA
-• Llama únicamente a la función detect_ui con el JSON correspondiente.
-• No añadas ningún texto adicional fuera del JSON.
-`;
+1. Analiza visualmente la imagen.
+2. Detecta componentes válidos: Label, Parrafo, InputBox, InputFecha, Boton, Link, Tabla, Checkbox, Selector, Sidebar, BottomNavbar, Cuadrado, Circulo, Imagen, Video, Audio.
+3. Devuelve una única pestaña:
+   - id: "tab1"
+   - name: "Pantalla 1"
+   - elementos: todos los componentes detectados.
+4. Para cada componente devuelve:
+   - x, y, width, height: coordenadas normalizadas entre 0.0 y 1.0
+   - fontSize: proporción de altura del texto respecto al alto total de la imagen, normalmente los fontsize están entre 0.02 y 0.035. valor minimo(0) valor maximo(1)
+   - zIndex: es cuando hay varias elementos superpuestos, para saber cual va encima de otro 
 
-    /* ─── 3. Llamada a OpenAI (reintento) ─── */
+
+---
+
+📦 DETECCIÓN AVANZADA:
+
+- *Sidebar*:
+  - Si un Label cae completamente dentro del Sidebar:
+    - El más alto será props.titulo, OJO A VECES NO HAY TITULO SI NO HAY TITULO TOMA TODOS LOS LABELS COMO ITEMS.
+    - Los demás serán props.items[].
+    - No los devuelvas como elementos independientes fuera del Sidebar.
+    - El sidebar Siempre estará por encima de todos los demas componentes gracias al zIndex
+
+- *Selector desplegado*:
+  - Si ves una caja con una opción visible y debajo varias líneas de texto en recuadros del mismo ancho, el selector puedes identificarlo ya que tiene como una flechita en el lado derecho:
+    - Interprétalo como un Selector.
+    - props.texto: opción seleccionada
+    - props.options[]: todas las opciones visibles, incluyendo la seleccionada
+
+---
+
+
+### 🎨 Especificación de cada componente:
+
+#### 🔹 Label
+- Props: texto, fontSize, color, bold
+- Úsalo para títulos, subtítulos o etiquetas de campos.
+- Label lamentablemente no tiene multilinea así que si quieres que poner multilineas tendras que usar un label por linea
+- NO PONGAS FONTSIZE GRANDES con mucho texto, porque se puede salir del contenedor o cortar líneas, toma en cuenta que los fontsize sí son grandes, por ende colocales valores relativamente bajos porque los dispositivos moviles no son muy grandes.
+
+#### 🔹 Parrafo
+- Props: texto, fontSize, color, bold, align
+- Úsalo para bloques de texto largo, como descripciones, explicaciones o contenido informativo.
+- A diferencia de Label, Parrafo **sí soporta multilinea**, tanto automática como manual con \n.
+- align puede ser "left", "center", "right" o "justify" para alinear el texto según lo necesites.
+- NO PONGAS FONTSIZE GRANDES con mucho texto, porque se puede salir del contenedor o cortar líneas, toma en cuenta que los fontsize sí son grandes, por ende colocales valores relativamente bajos porque los dispositivos moviles no son muy grandes.
+- Si querés un fondo detrás del texto, podés envolver el Parrafo dentro de un componente Cuadrado.
+
+
+#### 🔹 InputBox
+- Props: placeholder, fontSize
+- Úsalo para nombres, correos, textos cortos.
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MAS QUE ESTÉ BIEN UBICADO
+
+#### 🔹 InputFecha
+- Props: placeholder, fontSize
+- Campo para seleccionar una fecha.
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MAS QUE ESTÉ BIEN UBICADO
+
+#### 🔹 Boton
+- Props: texto, color, textColor, borderRadius, fontSize
+- Es un botón interactivo. Siempre requiere un texto.
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MAS QUE ESTÉ BIEN UBICADO
+
+#### 🔹 Link
+- Props: texto, url, fontSize, color
+- Es un enlace. Asegúrate de incluir una URL, aunque sea de ejemplo.
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MAS QUE ESTÉ BIEN UBICADO, QUIERO FONTSIZE PEQUEÑOS PARA LOS LINKS
+
+#### 🔹 Tabla
+- Props: headers, data, colWidths, fontSize
+- Solo utiliza tabla si se está menejando algo como un gestor de crud, o para gestor de almacen de compra y venta, para nada mas.
+- Representa una tabla de datos (tipo grilla).
+- headers es una lista de nombres de columnas. data es una lista de filas, cada fila es una lista de celdas.
+- colWidths debe ser una lista de números proporcionales (entre 0 y 1) que todos en su conjunto sumen 1, para que entren correctamente en el componente.
+- Si no se especifican headers o data en el prompt del usuario, inventa algunos genéricos pero coherentes.
+- Ejemplo válido:
+  - headers: ["Nombre", "Correo", "Rol"]
+  - data: [["Juan", "juan@mail.com", "Admin"], ["Ana", "ana@mail.com", "User"]]
+  - colWidths: [0.4, 0.4, 0.2]
+- El número de colWidths debe coincidir con el número de columnas.
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MÁS QUE ESTÉ BIEN UBICADO.
+
+
+#### 🔹 Checkbox
+- Props: texto, fontSize
+- Representa una opción seleccionable.
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MAS QUE ESTÉ BIEN UBICADO,QUIERO FONSIZE PEQUEÑOS PARA LOS CHECKBOX
+
+#### 🔹 Selector
+- Props: options, fontSize
+- Es un menú desplegable. Si no se dan opciones, incluye dos de ejemplo.
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MAS QUE ESTÉ BIEN UBICADO
+
+#### 🔹 Sidebar
+- Props: titulo, items[], visible, fontSize, bgColor, textColor, borderRadius
+- El titulo es el label más importante. Cada item tiene texto y nombrePestana(a lo que el redireccionamiento hace referencia es al "name" de pestañas, no al "id" de pestañas).
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MAS QUE ESTÉ BIEN UBICADO
+
+#### 🔹 BottomNavbar
+- Props: items[], selectedIndex, fontSize, colorActivo, colorInactivo, fondo, borderRadius, iconSize
+- Cada item tiene label, nombrePestana y icono, el icono debe ser del mismo tamaño que el fontsize o mas pequeño.
+- Si es que hay multiples pestañas debe estar correctamente enlazada en el bottomnavbar, el componente "items" tiene 3 cosas "label" "nombrePestana"(a lo que el redireccionamiento hace referencia es al "name" de pestañas, no al "id" de pestañas) e ícono.
+- NO PONGAS FONTSIZE GRANDES, PORQUE SALEN CORTADOS POR MAS QUE ESTÉ BIEN UBICADO
+- Los unicos Iconos permitidos son los siguientes: airplay: Airplay, alertCircle, alertOctagon, alertTriangle,alignCenter, alignJustify, alignLeft, alignRight, anchor, aperture, archive, arrowDownCircle, arrowDownLeft, arrowDownRight, arrowDown, arrowLeftCircle, arrowLeft, arrowRightCircle, arrowRight, arrowUpCircle, arrowUpLeft, arrowUpRight, arrowUp, atSign, award, batteryCharging, batteryFull, batteryLow, batteryMedium, beaker, bellOff, bell, bluetooth, bold, bookOpen, book, bookmark, box, briefcase, calendar, cameraOff, camera, cast, checkCircle, checkSquare, check, chevronDown, chevronLeft, chevronRight, chevronUp, chevronsDown, chevronsLeft, chevronsRight, chevronsUp, chrome, circle, clipboard, clock, cloudDrizzle, cloudLightning, cloudOff, cloudRain, cloudSnow, cloud, code, codepen, codesandbox, coffee, columns, command, compass, copy, cornerDownLeft, cornerDownRight, cornerLeftDown, cornerLeftUp, cornerRightDown, cornerRightUp, cornerUpLeft, cornerUpRight, cpu, creditCard, crop, crosshair, database, delete, disc, dollarSign, downloadCloud, download, edit, externalLink, eyeOff, eye, facebook, fastForward, feather, fileMinus, filePlus, fileText, file, film, filter, flag, folderMinus, folderPlus, folder, framer, gitBranch, gitCommit, gitMerge, gitPullRequest, github, gitlab, globe, grid, hardDrive, hash, headphones, heart, helpCircle, home, image, inbox, instagram, italic, key, layers, layout, lifeBuoy, link2, link, linkedin, list, loader, lock, logIn, logOut, mail, mapPin, map, maximize2, maximize, meh, menu, messageCircle, messageSquare, micOff, mic, minimize2, minimize, minusCircle, minusSquare, minus, monitor, moon, moreHorizontal, moreVertical, mousePointer, move, music, navigation, navigation2, network, octagon, package, paperclip, pauseCircle, pause, playCircle, play, plusCircle, plusSquare, plus, pocket, power, printer, radio, refreshCcw, refreshCw, rewind, rotateCcw, rotateCw, rss, save, scissors, search, send, server, settings, share2, share, shieldOff, shield, shoppingBag, shoppingCart, shuffle, sidebar, skipBack, skipForward, slack, slash, sliders, smartphone, speaker, square, star, stopCircle, sun, sunrise, sunset, tablet, tag, target, terminal, thermometer, thumbsDown, thumbsUp, toggleLeft, toggleRight, trash, trello, trendingDown, trendingUp, triangle, truck, tv, twitter, type, umbrella, unlink, uploadCloud, upload, userCheck, userMinus, userPlus, userX, user, users, videoOff, video, voicemail, volume1, volume2, volumeX, volume, wifiOff, wifi, wind, xCircle, xSquare, x, youtube
+
+#### 🔹 Cuadrado
+- Props: color, size, borderRadius, borderCorners
+- Usa Cuadrado para fondos de color plano los colores pasteles siempre son mas esteticos evita que el fondo sea blanco, aunque si son aplicaciones más formales no deberías usar muchos colores.
+- Usa Cuadrado para decorar, por ejemplo como "fondo" de un container, por ejemplo para diferenciar secciones de la pantalla
+- Siempre que uses un Cuadrado que no sea para color de fondo, usa borderCorners para bordes redondeados.
+
+
+#### 🔹 Circulo
+- Props: color, size
+- Usa Circulo para iconos o elementos circulares, el color puede ser el mismo que el del Cuadrado, no lo uses tanto el Circulo, preferible usa cuadrado con bordes redondeados.
+
+#### 🔹 Imagen / Video / Audio
+- Props: idArchivo, nombreArchivo, tipo, borderRadius
+- Para "Logos" puedes usar Imagen ya que el usuario decidirá que foto poner en su logo, pero el componente a usar es Imagen.
+- Usa valores de ejemplo si el usuario no da archivos.
+  - tipo debe ser "imagen", "video" o "audio" respectivamente.
+
+---
+
+🎯 COLOR:
+
+- Detectá el color real desde la imagen.
+  - texto → color
+  - fondo → color o bgColor
+  - botones → color + textColor
+- Usa siempre formato #RRGGBB
+- No inventes colores, no uses nombres como "blue" o "white".
+- Si no se detecta color visible en la imagen, usá los siguientes colores por defecto según el tipo de componente:
+  - Label: #000000
+  - Parrafo: #333333
+  - Boton: fondo #007bff, texto #ffffff
+  - Link: #2563eb
+  - Sidebar: fondo #1f2937, ítems #374151, texto #ffffff
+  - BottomNavbar: activo #2563eb, inactivo #666666, fondo #ffffff
+  - Cuadrado: #000000
+  - Circulo: #000000
+---
+
+📏 ESTÉTICA Y DISTRIBUCIÓN:
+
+
+- No agrupar ni superponer (excepto Sidebar o elementos decorativos con zIndex negativo)
+- El Sidebar puede superponerse: es colapsable
+- Si hay color de fondo usar un cuadrado gigante que esté con el menor zIndex posible
+
+---
+
+🚫 RESTRICCIONES:
+
+- No uses tipos no permitidos
+- No agregues texto fuera del JSON
+- No uses markdown
+- Tu única salida válida es una llamada:  
+  generar_ui({ pestañas: [...] })
+
+---
+
+🧠 Esta imagen es el único plano para reconstruir la UI. Sé preciso, profesional y limpio como si fueras un diseñador de Material Design en Google.`; // <- luego lo reemplazás por el prompt real completo
+
+    /* ─── 3. Llamada a OpenAI (con schema de función) ─── */
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    let toolCall;
-    for (let i = 0; i < 2; i++) {
-      const completion = await openai.chat.completions.create({
-        model: 'o3',
-        tools: [{ type: 'function', function: DETECTOR_SCHEMA }],
-        messages: [
-          { role: 'system', content: 'Eres un analista experto en wireframes.' },
-          { role: 'user', content: [
-              { type: 'text', text: prompt },
-              { type: 'image_url', image_url: { url: base64URL } }
-          ] }
-        ],
-        max_completion_tokens: 2048
-      });
-      toolCall = completion.choices?.[0]?.message?.tool_calls?.[0];
-      if (toolCall) break;
-    }
+    const DETECTOR_SCHEMA = require('../schemas/generar_ui.schema.json');
+
+    const completion = await openai.chat.completions.create({
+      model: 'o3',
+      tools: [{ type: 'function', function: DETECTOR_SCHEMA }],
+      messages: [
+        { role: 'system', content: 'Sos un analista experto en interfaces gráficas.' },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: base64URL } }
+          ]
+        }
+      ]
+    });
+
+    const toolCall = completion.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall)
       return res.status(400).json({ error: 'No se pudo interpretar el boceto.' });
 
-    /* ─── 4. Parseo bruto ─── */
-    let { boxes } = JSON.parse(toolCall.function.arguments);
-    if (!boxes?.length)
-      return res.status(400).json({ error: 'No se detectaron componentes.' });
+    const { pestañas } = JSON.parse(toolCall.function.arguments);
+    if (!pestañas?.length)
+      return res.status(400).json({ error: 'No se generaron componentes válidos.' });
 
-    /* ─── 5. Post-proceso de Sidebar ─── */
-    for (const sb of boxes.filter(b => b.tipo === 'Sidebar')) {
-      const sx = sb.bb.x, sy = sb.bb.y,
-            sx2 = sx + sb.bb.w, sy2 = sy + sb.bb.h;
+    /* ─── 4. Post-proceso: asignar IDs y corregir props ─── */
+    const pestañasConIds = pestañas.map(p => ({
+      ...p,
+      id: p.id || 'tab1',
+      name: p.name || 'Pantalla 1',
+      elementos: Array.isArray(p.elementos)
+        ? p.elementos.map(el => {
+            if (el.tipo === 'Cuadrado') {
+              el.props.borderCorners ??= {
+                topLeft: true,
+                topRight: true,
+                bottomLeft: true,
+                bottomRight: true
+              };
+            }
+            return { id: uuidv4(), ...el };
+          })
+        : []
+    }));
 
-      const internos = boxes.filter(b =>
-        b.tipo === 'Label' &&
-        b.bb.x >= sx && (b.bb.x + b.bb.w) <= sx2 &&
-        b.bb.y >= sy && (b.bb.y + b.bb.h) <= sy2
-      );
-
-      if (internos.length) {
-        internos.sort((a, b) => a.bb.y - b.bb.y);
-        const tituloLbl = internos.shift();
-        sb.titulo = tituloLbl.texto.trim();
-        sb.items  = internos.map(l => ({ texto: l.texto.trim() }));
-        // eliminar labels absorbidos
-        boxes = boxes.filter(b => !internos.includes(b) && b !== tituloLbl);
-      } else if (sb.texto) {
-        // Fallback: usar texto del propio objeto Sidebar
-        sb.titulo = sb.texto.trim();
-      }
-    }
-
-    /* ─── 6. Boxes → elementos canvas ─── */
-    const elementos = boxes.map(b => {
-      const x = +(b.bb.x / W).toFixed(6);
-      const y = +(b.bb.y / H).toFixed(6);
-      const width  = +(b.bb.w / W).toFixed(6);
-      const height = +(b.bb.h / H).toFixed(6);
-
-      const base = {
-        id: uuidv4(),
-        tipo: b.tipo,
-        x, y, width, height,
-        props: { fontSize: estimateFontSize(b.bb.h) }
-
-      };
-
-      switch (b.tipo) {
-        case 'Label':
-          Object.assign(base.props, { texto: b.texto || '', color: '#000000', bold: false });
-          break;
-        case 'InputBox':
-        case 'InputFecha':
-          base.props.placeholder = b.texto || '';
-          break;
-        case 'Boton':
-          Object.assign(base.props, {
-            texto: b.texto || 'Botón',
-            color: '#007bff',
-            textColor: '#ffffff',
-            borderRadius: 4
-          });
-          break;
-        case 'Checkbox':
-          base.props.texto = b.texto || 'Opción';
-          break;
-        case 'Selector':
-          base.props.options = b.options || ['Opción 1', 'Opción 2'];
-          break;
-        case 'Tabla':
-          Object.assign(base.props, {
-            headers: b.headers || [],
-            data: b.filas || [],
-            colWidths: (b.headers || []).map(() => 100)
-          });
-          break;
-        case 'Link':
-          Object.assign(base.props, {
-            texto: b.texto || 'Ir',
-            url: b.url || 'https://ejemplo.com',
-            color: '#2563eb'
-          });
-          break;
-        case 'Sidebar':
-          Object.assign(base.props, {
-            titulo : b.titulo || '(SIN_TÍTULO)',
-            items  : (b.items || []).map(it => ({
-              texto: it.texto,
-              nombrePestana: 'Pantalla 1'
-            })),
-            visible: true
-          });
-          break;
-      }
-      return base;
-    });
-    // Guardar automáticamente al detectar boceto
-    await proyectoService.crear({
-      nombre: 'Nuevo proyecto desde boceto',
+    /* ─── 5. Guardar proyecto automáticamente ─── */
+    const proyecto = await proyectoService.crear({
+      nombre: nombre,
+      descripcion: descripcion,
       dispositivo: 'phoneStandard',
       idUsuario: req.usuario.idUsuario,
       contenido: JSON.stringify({
         dispositivo: 'phoneStandard',
-        pestañas: [{ id: 'tab1', name: 'Pantalla 1', elementos }],
+        pestañas: pestañasConIds,
         clases: [],
         relaciones: [],
         clavesPrimarias: {}
       })
     });
 
-    /* ─── 7. Respuesta ─── */
-    res.status(200).json({
-      dispositivo: 'phoneStandard',
-      pestañas: [{ id: 'tab1', name: 'Pantalla 1', elementos }],
-      clases: [],
-      relaciones: [],
-      clavesPrimarias: {},
-      raw: toolCall.function.arguments
-    });
-
+    /* ─── 6. Respuesta final ─── */
+    res.status(200).json(proyecto);
   } catch (err) {
     console.error('[importarBoceto] Error crítico:', err?.response?.data || err.message);
-    res.status(500).json({ error: 'Error interno al analizar el boceto.' });
+    res.status(500).json({ error: 'Error interno al interpretar el boceto.' });
   }
 }
+
+
 
 
 
@@ -1517,7 +1785,7 @@ async generarDesdePrompt(req, res) {
     const systemPrompt = `Eres un diseñador UI experto, especializado en generar interfaces gráficas responsivas y precisas para aplicaciones móviles, a partir de descripciones textuales de usuarios, recuerda que siempre se debe poder diferenciar bloques de contenido o secciones, no deben existir pestañas vacías, cada pestaña debe tener algo.
 
 Tu tarea es construir una lista detallada de componentes visuales que representen la pantalla solicitada. Cada componente debe contener:
-
+Si hay Sidebar pon su zIndex en 100 para que esté por encima de todos los demás componentes.
 No uses Tabla para nada que no sea un gestor de crud, o para gestor de almacen de compra y venta(solo almacen porque si es un marketplace no debes usar tabla, tampoco para aplicaciones eccomerce), para nada mas. Mensajes o noticias lo puedes representar de otra forma
 
 1. tipo: el tipo exacto de componente.
