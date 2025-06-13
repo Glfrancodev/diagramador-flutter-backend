@@ -81,14 +81,36 @@ class InvitacionService {
     return { mensaje: 'Invitación eliminada correctamente' };
   }
 
-  async listarPendientesPorUsuario(idUsuario) {
-    return await Invitacion.findAll({
-      where: {
-        idUsuario,
-        estado: 'pendiente'
-      }
-    });
-  }
+async listarPendientesPorUsuario(idUsuario) {
+  const invitaciones = await Invitacion.findAll({
+    where: { idUsuario, estado: 'pendiente' },
+    raw: true,
+  });
+
+  const resultados = await Promise.all(
+    invitaciones.map(async (inv) => {
+      const proyecto = await Proyecto.findByPk(inv.idProyecto, {
+        attributes: ['nombre', 'descripcion', 'idUsuario'],
+        raw: true,
+      });
+
+      const dueno = await Usuario.findByPk(proyecto.idUsuario, {
+        attributes: ['correo'],
+        raw: true,
+      });
+
+      return {
+        ...inv,
+        nombreProyecto: proyecto.nombre,
+        descripcionProyecto: proyecto.descripcion,
+        correoDueno: dueno.correo,
+      };
+    })
+  );
+
+  return resultados;
+}
+
   
 
 }

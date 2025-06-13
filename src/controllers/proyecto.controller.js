@@ -7,9 +7,9 @@ const archiver = require('archiver');
 const path = require('path');
 const { createWriteStream, rmSync, unlinkSync } = require('fs');
 const proyectoService = require('../services/proyecto.service');
-const crypto = require('crypto');
 const sizeOf = require('image-size').imageSize;
 const { v4: uuidv4 } = require('uuid'); // ← asegúrate de tener esto
+
 function estimateFontSize(boxHeightPx) {
   if (boxHeightPx < 12) return 9;
   if (boxHeightPx < 16) return 11;
@@ -1310,200 +1310,6 @@ class MyApp extends StatelessWidget {
   }
 }
 
-
-
-// async importarBoceto(req, res) {
-//   try {
-//     /* ─── 0. Validaciones ─── */
-//     if (!req.file)
-//       return res.status(400).json({ error: 'No se recibió ninguna imagen.' });
-
-//     const ext = path.extname(req.file.originalname).toLowerCase();
-//     if (!['.png', '.jpg', '.jpeg'].includes(ext))
-//       return res.status(400).json({ error: 'Formato no válido. Solo PNG o JPG.' });
-
-//     /* ─── 1. Imagen → base64 ─── */
-//     const rutaImg = req.file.path;
-//     const buffer  = await fs.readFile(rutaImg);
-//     const { width: W, height: H } = sizeOf(buffer);
-//     const base64URL =
-//       `data:image/${ext.replace('.', '')};base64,${buffer.toString('base64')}`;
-
-//     /* ─── 2. Prompt ─── */
-// const prompt = `
-// Eres un analista experto en mockups de interfaces, es decir, necesito que sepas describir de manera exacta y fiel el contenido de la imagen que te voy a mandar haciendo que tu respuesta sea completamente fiel al boceto de imagen.
-
-// INSTRUCCIONES GENERALES
-// • Usa TODO el marco de la imagen como canvas (sin márgenes).
-// • Devuelve CADA componente visible (Label, InputBox, InputFecha, Boton, Sidebar, etc.).
-// • Las coordenadas bb.x, bb.y, bb.w, bb.h deben estar en **píxeles absolutos**
-//   respecto al tamaño real de la imagen (${W}px × ${H}px).
-// • Si un Selector está desplegado (con varias opciones visibles), incluye esas opciones en props.options[].
-// • Si sólo una opción es visible incluye esa opción en props.options[].
-// SIDEBARS
-// • Si un Label cae completamente DENTRO del rectángulo del Sidebar:
-//   - El Label más alto será props.titulo.
-//   - El resto irán en props.items[].
-// • No devuelvas esos Label como elementos sueltos fuera del Sidebar.
-// SELECTOR DESPLEGADO
-// • Si detectas una caja con una opción visible y debajo aparecen una o más líneas de texto alineadas verticalmente, dentro de rectángulos del mismo ancho:
-//   - Interprétalo como un Selector desplegado.
-//   - Usa la opción visible como props.texto
-//   - Incluye TODAS las opciones visibles, incluyendo la seleccionada, en props.options[].
-//   - Usa las opciones listadas debajo como props.options[]
-// • No trates esas opciones como tabla ni como input.
-
-// FORMATO DE SALIDA
-// • Llama únicamente a la función detect_ui con el JSON correspondiente.
-// • No añadas ningún texto adicional fuera del JSON.
-// `;
-
-//     /* ─── 3. Llamada a OpenAI (reintento) ─── */
-//     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-//     let toolCall;
-//     for (let i = 0; i < 2; i++) {
-//       const completion = await openai.chat.completions.create({
-//         model: 'o3',
-//         tools: [{ type: 'function', function: DETECTOR_SCHEMA }],
-//         messages: [
-//           { role: 'system', content: 'Eres un analista experto en wireframes.' },
-//           { role: 'user', content: [
-//               { type: 'text', text: prompt },
-//               { type: 'image_url', image_url: { url: base64URL } }
-//           ] }
-//         ],
-//         max_completion_tokens: 2048
-//       });
-//       toolCall = completion.choices?.[0]?.message?.tool_calls?.[0];
-//       if (toolCall) break;
-//     }
-//     if (!toolCall)
-//       return res.status(400).json({ error: 'No se pudo interpretar el boceto.' });
-
-//     /* ─── 4. Parseo bruto ─── */
-//     let { boxes } = JSON.parse(toolCall.function.arguments);
-//     if (!boxes?.length)
-//       return res.status(400).json({ error: 'No se detectaron componentes.' });
-
-//     /* ─── 5. Post-proceso de Sidebar ─── */
-//     for (const sb of boxes.filter(b => b.tipo === 'Sidebar')) {
-//       const sx = sb.bb.x, sy = sb.bb.y,
-//             sx2 = sx + sb.bb.w, sy2 = sy + sb.bb.h;
-
-//       const internos = boxes.filter(b =>
-//         b.tipo === 'Label' &&
-//         b.bb.x >= sx && (b.bb.x + b.bb.w) <= sx2 &&
-//         b.bb.y >= sy && (b.bb.y + b.bb.h) <= sy2
-//       );
-
-//       if (internos.length) {
-//         internos.sort((a, b) => a.bb.y - b.bb.y);
-//         const tituloLbl = internos.shift();
-//         sb.titulo = tituloLbl.texto.trim();
-//         sb.items  = internos.map(l => ({ texto: l.texto.trim() }));
-//         // eliminar labels absorbidos
-//         boxes = boxes.filter(b => !internos.includes(b) && b !== tituloLbl);
-//       } else if (sb.texto) {
-//         // Fallback: usar texto del propio objeto Sidebar
-//         sb.titulo = sb.texto.trim();
-//       }
-//     }
-
-//     /* ─── 6. Boxes → elementos canvas ─── */
-//     const elementos = boxes.map(b => {
-//       const x = +(b.bb.x / W).toFixed(6);
-//       const y = +(b.bb.y / H).toFixed(6);
-//       const width  = +(b.bb.w / W).toFixed(6);
-//       const height = +(b.bb.h / H).toFixed(6);
-
-//       const base = {
-//         id: uuidv4(),
-//         tipo: b.tipo,
-//         x, y, width, height,
-//         props: { fontSize: estimateFontSize(b.bb.h) }
-
-//       };
-
-//       switch (b.tipo) {
-//         case 'Label':
-//           Object.assign(base.props, { texto: b.texto || '', color: '#000000', bold: false });
-//           break;
-//         case 'InputBox':
-//         case 'InputFecha':
-//           base.props.placeholder = b.texto || '';
-//           break;
-//         case 'Boton':
-//           Object.assign(base.props, {
-//             texto: b.texto || 'Botón',
-//             color: '#007bff',
-//             textColor: '#ffffff',
-//             borderRadius: 4
-//           });
-//           break;
-//         case 'Checkbox':
-//           base.props.texto = b.texto || 'Opción';
-//           break;
-//         case 'Selector':
-//           base.props.options = b.options || ['Opción 1', 'Opción 2'];
-//           break;
-//         case 'Tabla':
-//           Object.assign(base.props, {
-//             headers: b.headers || [],
-//             data: b.filas || [],
-//             colWidths: (b.headers || []).map(() => 100)
-//           });
-//           break;
-//         case 'Link':
-//           Object.assign(base.props, {
-//             texto: b.texto || 'Ir',
-//             url: b.url || 'https://ejemplo.com',
-//             color: '#2563eb'
-//           });
-//           break;
-//         case 'Sidebar':
-//           Object.assign(base.props, {
-//             titulo : b.titulo || '(SIN_TÍTULO)',
-//             items  : (b.items || []).map(it => ({
-//               texto: it.texto,
-//               nombrePestana: 'Pantalla 1'
-//             })),
-//             visible: true
-//           });
-//           break;
-//       }
-//       return base;
-//     });
-//     // Guardar automáticamente al detectar boceto
-//     await proyectoService.crear({
-//       nombre: 'Nuevo proyecto desde boceto',
-//       dispositivo: 'phoneStandard',
-//       idUsuario: req.usuario.idUsuario,
-//       contenido: JSON.stringify({
-//         dispositivo: 'phoneStandard',
-//         pestañas: [{ id: 'tab1', name: 'Pantalla 1', elementos }],
-//         clases: [],
-//         relaciones: [],
-//         clavesPrimarias: {}
-//       })
-//     });
-
-//     /* ─── 7. Respuesta ─── */
-//     res.status(200).json({
-//       dispositivo: 'phoneStandard',
-//       pestañas: [{ id: 'tab1', name: 'Pantalla 1', elementos }],
-//       clases: [],
-//       relaciones: [],
-//       clavesPrimarias: {},
-//       raw: toolCall.function.arguments
-//     });
-
-//   } catch (err) {
-//     console.error('[importarBoceto] Error crítico:', err?.response?.data || err.message);
-//     res.status(500).json({ error: 'Error interno al analizar el boceto.' });
-//   }
-// }
-
-
 async importarBoceto(req, res) {
   try {
     const { nombre, descripcion } = req.body;
@@ -1783,17 +1589,18 @@ async generarDesdePrompt(req, res) {
 
     // Prompt system
     const systemPrompt = `Eres un diseñador UI experto, especializado en generar interfaces gráficas responsivas y precisas para aplicaciones móviles, a partir de descripciones textuales de usuarios, recuerda que siempre se debe poder diferenciar bloques de contenido o secciones, no deben existir pestañas vacías, cada pestaña debe tener algo.
-
+Siempre que sean mas de dos palabras coloca el fontsize entre 0.02 y 0.035 para que no salga cortado, si son dos palabras o menos que se entre 0.03 y 0.04.
 Tu tarea es construir una lista detallada de componentes visuales que representen la pantalla solicitada. Cada componente debe contener:
 Si hay Sidebar pon su zIndex en 100 para que esté por encima de todos los demás componentes.
 No uses Tabla para nada que no sea un gestor de crud, o para gestor de almacen de compra y venta(solo almacen porque si es un marketplace no debes usar tabla, tampoco para aplicaciones eccomerce), para nada mas. Mensajes o noticias lo puedes representar de otra forma
+El fontsize y fontIcon del BottomNavBar siempre deben ser 0.0201 para que entre en el height, porque sino siempre sale mal el icono
 
 1. tipo: el tipo exacto de componente.
 2. x, y: coordenadas normalizadas (de 0.0 a 1.0) respecto al canvas.
 3. width, height: tamaño relativo del componente (de 0.0 a 1.0).
 4. zIndex: siempre 0 por defecto, salvo que el usuario mencione superposición.
 5. props: conjunto de propiedades específicas para cada tipo de componente.
-6. fontSize: tamaño de fuente relativo (de 0.0 a 1.0). Siempre que sean mas de dos palabras coloca el fontsize entre 0.02 y 0.035 para que no salga cortado, si son dos palabras o menos que se entre 0.03 y 0.04.
+6. fontSize: tamaño de fuente relativo (de 0.0 a 1.0). Siempre que sean mas de dos palabras coloca el fontsize entre 0.02 y 0.025 para que no salga cortado, si son dos palabras o menos que se entre 0.03 y 0.04.
 7. borderRadius: radio de bordes redondeados (NO SON NORMALIZADOS, si no se especifica, usa 6px).
 8. iconsize: debe ser el mismo que fontSize, si no se especifica, usa 0.0237.
 ---
@@ -2009,8 +1816,228 @@ const proyecto = await proyectoService.crear({
   }
 }
 
+  /**
+   * Transcribe un archivo de audio usando el modelo gpt-4o-audio-preview
+   * Devuelve { texto: '…' } sin almacenar nada en disco.
+   *
+   * Espera que el frontend envíe el audio en el campo "audio"
+   * mediante multipart/form-data (ej.: MediaRecorder -> audio/webm,
+   * grabaciones .mp3, .m4a, .wav, etc.).
+   *
+   * Rutas sugeridas:
+   *   POST /api/proyectos/audio-a-texto      (público)
+   */
+  async audioATexto (req, res) {
+  try {
+    /* ─── 1. Validación ─── */
+    if (!req.file) {
+      return res.status(400).json({ error: 'No se recibió ningún archivo de audio.' });
+    }
+
+    const mime = require('mime-types');
+    const { toMp3 } = require('../utils/audio');   // <-- NUEVO helper
+    const rawExt =
+      mime.extension(req.file.mimetype) ||                    // ej. mpga, wav…
+      path.extname(req.file.originalname).replace('.', '').toLowerCase();
+
+    // Normalizamos alias (mpga ⇒ mp3, etc.)
+    const alias = { mpga: 'mp3', mpeg: 'mp3', oga: 'ogg' };
+  let ext   = alias[rawExt] || rawExt;       // webm, wav, mp3, ogg…
+  let realPath = req.file.path;              // podría cambiar si convertimos
+
+  // ── Si el formato no es mp3 / wav, lo transcodificamos ──────────────
+  if (!['mp3', 'wav'].includes(ext)) {
+    console.log(`🎛  Convirtiendo ${ext} → mp3…`);
+    realPath = await toMp3(realPath);        // nos devuelve el .mp3
+    ext      = 'mp3';
+  }
 
 
+    console.log('[audioATexto] Archivo recibido:');
+    console.log(`→ Nombre original: ${req.file.originalname}`);
+    console.log(`→ MIME type: ${req.file.mimetype}`);
+    console.log(`→ Path temporal: ${req.file.path}`);
+    console.log(`→ Tamaño: ${req.file.size} bytes`);
+
+    /* ─── 2. Base64 ─── */
+    const buffer   = await fs.readFile(realPath);
+    const audioB64 = buffer.toString('base64');
+
+    /* ─── 3. Llamada a OpenAI ─── */
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+    console.log('⏳ Enviando a GPT-4o-audio…');
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-audio-preview',
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'text',
+            text: 'Transcribe el siguiente audio exactamente al español. Devuelve solo la transcripción.'
+          },
+          {
+            type: 'input_audio',
+            input_audio: { data: audioB64, format: ext }   // ← ext ya normalizado
+          }
+        ]
+      }]
+    });
+
+    /* ─── 4. Respuesta ─── */
+    const texto = completion.choices?.[0]?.message?.content?.trim() || '';
+    if (!texto) return res.status(500).json({ error: 'La transcripción llegó vacía.' });
+
+    console.log('[audioATexto] Transcripción OK:', texto);
+    try { await fs.unlink(realPath); } catch {/* ignora */}
+
+    return res.status(200).json({ texto });
+  } catch (err) {
+    console.error('[audioATexto] Error crítico:', err?.response?.data || err.message);
+    return res.status(500).json({ error: 'Error interno al transcribir audio.' });
+  }
+}
+
+
+  async audioADatos(req, res) {
+    try {
+      if (!req.file) {
+        return res
+          .status(400)
+          .json({ error: 'No se recibió ningún archivo de audio.' });
+      }
+
+      const mime = require('mime-types');
+      const path = require('path');
+      const fs = require('fs').promises;
+      const { toMp3 } = require('../utils/audio');
+      const { OpenAI } = require('openai');
+
+      /* ─── 0. Normalizar extensión ─── */
+      const rawExt =
+        mime.extension(req.file.mimetype) ||
+        path.extname(req.file.originalname).replace('.', '').toLowerCase();
+      const alias = { mpga: 'mp3', mpeg: 'mp3', oga: 'ogg' };
+      let ext = alias[rawExt] || rawExt;
+      let realPath = req.file.path;
+
+      /* ─── 1. Conversión a mp3 si hace falta ─── */
+      if (!['mp3', 'wav'].includes(ext)) {
+        console.log(`🎛 Convirtiendo ${ext} → mp3…`);
+        realPath = await toMp3(realPath);
+        ext = 'mp3';
+      }
+
+      console.log('[audioADatos] Archivo recibido:');
+      console.log(`→ Nombre: ${req.file.originalname}`);
+      console.log(`→ Tipo:   ${req.file.mimetype}`);
+      console.log(`→ Path:   ${realPath}`);
+
+      /* ─── 2. Leer y Base64 ─── */
+      const buffer = await fs.readFile(realPath);
+      const audioB64 = buffer.toString('base64');
+
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+      /* ─── 3. Transcribir con Whisper ─── */
+      console.log('⏳ Transcribiendo audio…');
+      const transcripcion = await openai.chat.completions.create({
+        model: 'gpt-4o-audio-preview',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text:
+                  'Transcribe el siguiente audio exactamente al español. Devuelve solo la transcripción.'
+              },
+              {
+                type: 'input_audio',
+                input_audio: { data: audioB64, format: ext }
+              }
+            ]
+          }
+        ]
+      });
+
+      const texto =
+        transcripcion.choices?.[0]?.message?.content?.trim() || '';
+      if (!texto) {
+        return res
+          .status(500)
+          .json({ error: 'La transcripción llegó vacía.' });
+      }
+
+      console.log('[audioADatos] Transcripción OK:', texto);
+
+      /* ─── 4. Generar título y descripción ─── */
+      const completado = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'Eres un asistente que ayuda a crear proyectos de apps móviles.'
+          },
+          {
+            role: 'user',
+            content: `
+Devuelve **solo** un objeto JSON con exactamente estas claves:
+
+{
+  "titulo": "<Máx. 5 palabras que resuman la idea del proyecto>",
+  "descripcion": "<1–2 frases que describan el proyecto>",
+  "prompt": "<copia literal del texto original, sin modificar NADA>"
+}
+
+Texto original (cópialo tal cual en "prompt"):
+
+"""${texto}"""
+            `.trim()
+          }
+        ],
+        response_format: { type: 'json_object' }
+      });
+
+      /* ─── 5. Parseo y validación ─── */
+      let parsed;
+      try {
+        parsed = JSON.parse(
+          completado.choices?.[0]?.message?.content || '{}'
+        );
+      } catch (err) {
+        parsed = {};
+      }
+
+      if (!parsed.titulo || !parsed.descripcion) {
+        return res
+          .status(500)
+          .json({ error: 'No se pudo generar título o descripción.' });
+      }
+
+      /* Por si acaso, garantizamos que “prompt” sea idéntico */
+      parsed.prompt = texto;
+
+      /* ─── 6. Limpieza ─── */
+      await fs.unlink(realPath).catch(() => {});
+
+      /* ─── 7. Respuesta ─── */
+      return res.status(200).json({
+        titulo: parsed.titulo,
+        descripcion: parsed.descripcion,
+        prompt: parsed.prompt
+      });
+    } catch (err) {
+      console.error(
+        '[audioADatos] Error crítico:',
+        err?.response?.data || err.message
+      );
+      return res
+        .status(500)
+        .json({ error: 'Error interno al procesar el audio.' });
+    }
+  }
 
 
 }
