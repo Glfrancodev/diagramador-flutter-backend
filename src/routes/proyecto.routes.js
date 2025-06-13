@@ -25,5 +25,7 @@ router.post('/generar-desde-prompt', verificarToken, proyectoController.generarD
 router.post('/audio-a-texto', verificarToken, upload.single('audio'), proyectoController.audioATexto);
 router.post('/audio-a-datos', verificarToken, upload.single('audio'), proyectoController.audioADatos); // ✅ nueva
 
+// ──────────────── Bot asistente del editor (chatbot) ────────────────
+router.post('/:id/duda-bot', verificarToken, proyectoController.responderDudaDelBot);
 
 module.exports = router;
